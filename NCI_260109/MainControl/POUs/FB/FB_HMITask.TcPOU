@@ -1,0 +1,175 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_HMITask" Id="{3eaa0837-ab50-4712-bfa7-6a80ddd8b2f9}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_HMITask
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR
+	fb_ReadPres					:	FB_ReadPressure;
+	fb_WritePres				:	FB_WritePressure;
+	fb_LJ_S8000Cap				:	FB_LJ_S8000Capture;
+	
+	nNordsonReadPressureCase	:	UDINT	:=	0;
+	nNordsonWritePressureCase	:	UDINT	:=	0;
+	nLJ_S8000CaptureCase		:	UDINT	:=	0;
+	
+	nClearQueueCase				:	UDINT	:=	0;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[      IF UserVar.NordsonReadPressureBtn	THEN
+	CASE nNordsonReadPressureCase OF
+		0:
+			UserVar.NordsonPressureActive	:=	FALSE;
+			fb_ReadPres( bExecute	:=	TRUE);
+			IF fb_ReadPres.bBusy	THEN
+				fb_ReadPres.bExecute	:=	FALSE;
+				nNordsonReadPressureCase	:=	1;
+			END_IF
+		1:
+			fb_ReadPres( bExecute	:=	FALSE);
+			IF NOT fb_ReadPres.bBusy THEN
+				IF NOT fb_ReadPres.bErr THEN
+					HMIVar.NordsonPressure	:=	REAL_TO_STRING(fb_ReadPres.Pressure);
+				ELSE
+					HMIVar.NordsonPressure	:=	'0';
+				END_IF
+				UserVar.NordsonPressureActive	:=	TRUE;
+				UserVar.NordsonReadPressureBtn	:=	FALSE;
+				nNordsonReadPressureCase	:=	0;
+			END_IF
+	END_CASE
+END_IF
+
+
+IF UserVar.NordsonWritePressureBtn	THEN
+	CASE nNordsonWritePressureCase OF
+		0:
+			UserVar.NordsonPressureActive	:=	FALSE;
+			fb_WritePres(
+				bExecute	:=	TRUE,
+				Pressure	:=	STRING_TO_REAL(HMIVar.NordsonPressure));
+			IF fb_WritePres.bBusy	THEN
+				fb_WritePres.bExecute	:=	FALSE;
+				nNordsonWritePressureCase	:=	1;
+			END_IF
+		1:
+			fb_WritePres(
+				bExecute	:=	FALSE);
+			IF NOT fb_WritePres.bBusy THEN
+				UserVar.NordsonPressureActive	:=	TRUE;
+				UserVar.NordsonWritePressureBtn	:=	FALSE;
+				nNordsonWritePressureCase	:=	0;
+			END_IF
+	END_CASE
+END_IF
+
+
+IF UserVar.LJ_S8000CaptureBtn	THEN
+	CASE nLJ_S8000CaptureCase OF
+		0:
+			UserVar.LJ_S8000CaptureActive	:=	FALSE;
+			fb_LJ_S8000Cap(	bExecute :=	TRUE);
+			IF fb_LJ_S8000Cap.bBusy THEN
+				fb_LJ_S8000Cap.bExecute	:=	FALSE;
+				nLJ_S8000CaptureCase	:=	1;
+			END_IF
+		1:
+			fb_LJ_S8000Cap(	bExecute :=	FALSE);
+			IF NOT fb_LJ_S8000Cap.bBusy THEN
+				UserVar.LJ_S8000CaptureActive	:=	TRUE;
+				UserVar.LJ_S8000CaptureBtn	:=	FALSE;
+				nLJ_S8000CaptureCase	:=	0;
+			END_IF
+	END_CASE
+END_IF
+
+
+IF UserVar.bClearQueue THEN	
+	CASE nClearQueueCase OF
+		0:
+			IF NOT f_QueuePop(pQueue := ADR(UserVar.GCodeNameQueue)) THEN
+				nClearQueueCase	:=	1;
+			END_IF
+		1:
+			HMIVar.GCodeQueueString	:=	f_Queue_ToString(ADR(UserVar.GCodeNameQueue));
+			UserVar.bClearQueue	:=	FALSE;
+			nClearQueueCase	:=	0;
+	END_CASE
+END_IF
+
+
+
+IF ExtPort.EL1008_IN[1] THEN
+	UserVar.bNordsonFoot	:=	 TRUE;
+	ExtPort.EL2634_OUT[0]	:=	TRUE;
+END_IF
+
+
+IF UserVar.bNordsonFoot	THEN
+	IF NOT ExtPort.EL1008_IN[1]	THEN
+		UserVar.bNordsonFoot	:=	FALSE;
+		ExtPort.EL2634_OUT[0]	:=	FALSE;
+	END_IF
+END_IF]]></ST>
+    </Implementation>
+    <LineIds Name="FB_HMITask">
+      <LineId Id="9" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="23" Count="2" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="65" Count="0" />
+      <LineId Id="27" Count="1" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="32" Count="1" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="70" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="38" Count="6" />
+      <LineId Id="61" Count="0" />
+      <LineId Id="60" Count="0" />
+      <LineId Id="45" Count="4" />
+      <LineId Id="68" Count="1" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="56" Count="1" />
+      <LineId Id="71" Count="0" />
+      <LineId Id="58" Count="1" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="72" Count="1" />
+      <LineId Id="63" Count="0" />
+      <LineId Id="74" Count="0" />
+      <LineId Id="76" Count="0" />
+      <LineId Id="78" Count="0" />
+      <LineId Id="81" Count="2" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="84" Count="0" />
+      <LineId Id="86" Count="3" />
+      <LineId Id="92" Count="0" />
+      <LineId Id="91" Count="0" />
+      <LineId Id="90" Count="0" />
+      <LineId Id="77" Count="0" />
+      <LineId Id="75" Count="0" />
+      <LineId Id="148" Count="0" />
+      <LineId Id="226" Count="0" />
+      <LineId Id="329" Count="0" />
+      <LineId Id="367" Count="0" />
+      <LineId Id="370" Count="0" />
+      <LineId Id="372" Count="3" />
+      <LineId Id="377" Count="2" />
+      <LineId Id="371" Count="0" />
+      <LineId Id="368" Count="0" />
+      <LineId Id="396" Count="13" />
+      <LineId Id="256" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

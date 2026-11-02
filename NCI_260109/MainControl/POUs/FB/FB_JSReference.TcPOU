@@ -1,0 +1,89 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_JSReference" Id="{e381aa14-296c-43d4-92a2-46799356c340}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_JSReference
+VAR_INPUT
+	bStartX	:	BOOL;
+	bStartY	:	BOOL;
+	bStartZ	:	BOOL;
+END_VAR
+VAR_OUTPUT
+	bReferenced: BOOL := FALSE;
+END_VAR
+VAR_IN_OUT
+	motX:	AXIS_REF;
+	motY:	AXIS_REF;
+	motZ:	AXIS_REF;
+END_VAR	
+VAR
+	JS_MC_X :	JS_MC_REF;
+	JS_MC_Y :	JS_MC_REF;
+	JS_MC_Z :	JS_MC_REF;
+	Done_X	:	BOOL;
+	Done_Y	:	BOOL;
+	Done_Z	:	BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[JS_MC_X(
+	Axis	:=	motX,
+	bExecute:=	bStartX,
+	bAbort	:=	FALSE,
+	bForceNewRef	:=FALSE,
+	iTypeGantry	:=0,
+	Done	=>	Done_X);
+	
+JS_MC_Y(
+	Axis	:=	motY,
+	bExecute:=	bStartY,
+	bAbort	:=	FALSE,
+	bForceNewRef	:=FALSE,
+	iTypeGantry	:=0,
+	Done	=>	Done_Y);
+	
+JS_MC_Z(
+	Axis	:=	motZ,
+	bExecute:=	bStartZ,
+	bAbort	:=	FALSE,
+	bForceNewRef	:=FALSE,
+	iTypeGantry	:=0,
+	Done	=>	Done_Z);
+
+IF bStartX OR bStartY OR bStartZ THEN
+	bReferenced	:=	
+		((NOT bStartX) OR Done_X) AND
+		((NOT bStartY) OR Done_Y) AND
+		((NOT bStartZ) OR Done_Z);
+ELSE
+	bReferenced	:=	FALSE;
+END_IF
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_JSReference">
+      <LineId Id="9" Count="0" />
+      <LineId Id="27" Count="1" />
+      <LineId Id="79" Count="1" />
+      <LineId Id="87" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="33" Count="0" />
+      <LineId Id="35" Count="2" />
+      <LineId Id="81" Count="1" />
+      <LineId Id="86" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="40" Count="2" />
+      <LineId Id="83" Count="2" />
+      <LineId Id="39" Count="0" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="52" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="54" Count="0" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="44" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

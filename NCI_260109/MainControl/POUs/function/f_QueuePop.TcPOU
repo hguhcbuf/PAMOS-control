@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="f_QueuePop" Id="{7ef47e54-316e-4974-affc-18f3f7a92706}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION f_QueuePop : BOOL
+VAR_INPUT
+    pQueue : POINTER TO T_StringQueue;
+END_VAR
+VAR_OUTPUT
+    str : STRING(255);
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[IF pQueue^.Count <= 0 THEN
+    f_QueuePop := FALSE; // Empty
+ELSE
+    str := pQueue^.Buffer[pQueue^.Head];
+    pQueue^.Head := (pQueue^.Head + 1) MOD 20;
+    pQueue^.Count := pQueue^.Count - 1;
+    f_QueuePop := TRUE;
+END_IF
+]]></ST>
+    </Implementation>
+    <LineIds Name="f_QueuePop">
+      <LineId Id="24" Count="7" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

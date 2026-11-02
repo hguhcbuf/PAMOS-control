@@ -1,0 +1,1246 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="MotorControl" Id="{5f648095-34fc-43f9-bd69-7c1632fbad99}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MotorControl
+VAR
+	motX	:	AXIS_REF;
+	motY	:	AXIS_REF;
+	motZ	:	AXIS_REF;
+	
+	inst_NcToPlc_NCI	AT %I*	:	NCTOPLC_NCICHANNEL_REF;
+	inst_PlcToNc_NCI	AT %Q*	:	PLCTONC_NCICHANNEL_REF;
+	
+	fb_JSReference	:	FB_JSReference;
+	fb_MotorPower	:	FB_MotorPower;
+	fb_MotorReset	:	FB_MotorReset;
+	
+	fb_McodeMonitor	:	FB_McodeMonitor;
+	fb_RParamInit	:	FB_RParamInit;
+	fb_Backend		:	FB_BackendManager;
+	
+	bPowered	:	BOOL;
+	bMotorReset	:	BOOL;
+	bError		:	BOOL;
+	bBusy		:	BOOL;
+	
+	bOpMcodeMonitor	:	BOOL	:=	FALSE;
+	
+	nMotorControlState	:	UDINT	:= 0;
+	nInterpreterState	:	UDINT	:= 0;
+	nErrorState			:	UDINT;
+	
+	
+	fb_BuildGroup	:	CfgBuild3DGroup;
+	fb_LoadProgEx	:	ItpLoadProgEx;
+	fb_StartStopEx	:	ItpStartStopEx;
+	fb_ClearGroup	:	CfgReconfigGroup;
+	fb_ResetEx		:	ItpResetEx2;
+	
+	fb_MCJogX		:	FB_Jog;
+	fb_MCJogY		:	FB_Jog;
+	fb_MCJogZ		:	FB_Jog;
+	
+	fb_MoveAbsX		:	MC_MoveAbsolute;
+	fb_MoveAbsY		:	MC_MoveAbsolute;
+	fb_MoveAbsZ		:	MC_MoveAbsolute;
+	
+	fb_ExtMessage	:	FB_ExtMessage;
+	
+	fb_HMITask		:	FB_HMITask;
+	
+//	nMoveAbsVel		:	REAL	:=	30.0;
+	
+	fb_MCHaltX		:	MC_Halt;
+	fb_MCHaltY		:	MC_Halt;
+	fb_MCHaltZ		:	MC_Halt;
+	
+	fb_ItpEStop		:	ItpEStopEx;
+	
+	// Axis 4 extension: link motQ1 to NC Axis 4 after PLC Rebuild.
+	motQ1 : AXIS_REF;
+	fb_Q1Power : MC_Power;
+	fb_Q1Reset : MC_Reset;
+	fb_Q1Jog : MC_Jog;
+	fb_Q1Status : MC_ReadStatus;
+	fb_Q1ResetEdge : R_TRIG;
+	fb_BuildGroupQ1 : CfgBuildExt3DGroup;
+	bQ1UseLatched : BOOL := FALSE;
+	bQ1Reserved : BOOL := FALSE; // Conservative lock, cleared only after group removal
+	bQ1Linked : BOOL;
+	bQ1Enable : BOOL;
+	bQ1ManualAllowed : BOOL;
+	bQ1Ready : BOOL;
+	bQ1BuildStarted : BOOL := FALSE;
+	nQ1Interlock : UDINT := 0; // 0=none, 1=start not ready, 2=permission/power/mode lost
+	fQ1ActPos : LREAL;
+	fQ1ActVelo : LREAL;
+
+END_VAR
+
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Axis 4 service. No writes to existing XYZ ready/power/reset signals.
+bQ1Linked := motQ1.NcToPlc.AxisId = 4;
+fb_Q1Status(Axis := motQ1, Enable := bQ1Linked);
+IF UserVar.bESTOP THEN
+	UserVar.Q1Enable := FALSE; // No automatic re-enable after ESTOP reset
+	UserVar.Q1JogButton := 0;
+END_IF
+bQ1Enable := bQ1Linked AND UserVar.Q1Commissioned AND UserVar.Q1Enable
+	AND NOT UserVar.bESTOP;
+fb_Q1Power(Axis := motQ1, Enable := bQ1Enable,
+	Enable_Positive := bQ1Enable, Enable_Negative := bQ1Enable, Override := 100.0);
+bQ1ManualAllowed := NOT bQ1Reserved AND NOT UserVar.bESTOP
+	AND ((nMotorControlState = 0) OR (nMotorControlState = 100));
+fb_Q1ResetEdge(CLK := UserVar.Q1Reset);
+fb_Q1Reset(Axis := motQ1,
+	Execute := fb_Q1ResetEdge.Q AND bQ1Linked AND NOT bQ1Reserved
+		AND NOT fb_Q1Jog.Busy AND NOT UserVar.bESTOP
+		AND ((nMotorControlState = 0) OR (nMotorControlState = 100)
+			OR (nMotorControlState = 200)));
+fb_Q1Jog(Axis := motQ1, Mode := E_JogMode.MC_JOGMODE_CONTINOUS,
+	Velocity := UserVar.Q1JogVelocity,
+	JogForward := bQ1ManualAllowed AND bQ1Enable AND fb_Q1Power.Status
+		AND NOT fb_Q1Reset.Busy AND NOT UserVar.Q1Reset
+		AND (UserVar.Q1JogVelocity > 0.0) AND (UserVar.Q1JogButton = 1),
+	JogBackwards := bQ1ManualAllowed AND bQ1Enable AND fb_Q1Power.Status
+		AND NOT fb_Q1Reset.Busy AND NOT UserVar.Q1Reset
+		AND (UserVar.Q1JogVelocity > 0.0) AND (UserVar.Q1JogButton = -1));
+bQ1Ready := bQ1Enable AND fb_Q1Power.Status AND NOT fb_Q1Power.Error
+	AND fb_Q1Status.Valid AND fb_Q1Status.StandStill AND NOT fb_Q1Status.Error
+	AND NOT fb_Q1Status.ErrorStop AND NOT fb_Q1Jog.Busy AND NOT fb_Q1Jog.Error
+	AND NOT fb_Q1Reset.Busy AND NOT fb_Q1Reset.Error AND NOT UserVar.Q1Reset
+	AND (UserVar.Q1JogButton = 0);
+fQ1ActPos := motQ1.NcToPlc.ActPos;
+fQ1ActVelo := motQ1.NcToPlc.ActVelo;
+IF (nMotorControlState = 200) AND NOT bQ1Reserved THEN
+	bQ1UseLatched := UserVar.Q1UseInGCode;
+	nQ1Interlock := 0;
+END_IF
+// A participating Q1 fault stops the shared channel; XYZ-only runs are unaffected.
+IF bQ1Reserved AND (nMotorControlState >= 202) AND (nMotorControlState <= 261)
+	AND (NOT bQ1Enable OR NOT fb_Q1Power.Status OR fb_Q1Power.Error
+		OR NOT fb_Q1Status.Valid OR fb_Q1Status.Error OR fb_Q1Status.ErrorStop
+		OR (UserVar.OpMode <> 2)) THEN
+	nQ1Interlock := 2;
+	nErrorState := nMotorControlState;
+	bError := TRUE;
+	nMotorControlState := 299;
+END_IF
+
+CASE nMotorControlState OF
+
+0:
+	// Mode Selecting
+	IF (UserVar.OpMode = 1) OR (UserVar.OpMode = 2) THEN
+		bBusy	:=	TRUE;
+		nMotorControlState	:=	1;
+	ELSE
+		bBusy	:=	FALSE;
+		bOpMcodeMonitor		:=	FALSE;
+	END_IF
+
+//1:
+//	fb_MotorReset(
+//		motX	:=	motX,
+//		motY	:=	motY,
+//		motZ	:=	motZ,
+//		bResetX	:=	TRUE,
+//		bResetY	:=	TRUE,
+//		bResetZ	:=	TRUE,
+//		bReset	=>	bMotorReset);
+//	IF bMotorReset THEN
+////		fb_MotorReset.bResetX	:=	FALSE;
+////		fb_MotorReset.bResetY	:=	FALSE;
+////		fb_MotorReset.bResetZ	:=	FALSE;
+//		nMotorControlState	:= 2;
+//	END_IF
+
+1:
+	// Initial Power ON
+	fb_MotorPower(
+		motX	:=	motX,
+		motY	:=	motY,
+		motZ	:=	motZ,
+		bPowerX	:=	TRUE,
+		bPowerY	:=	TRUE,
+		bPowerZ	:=	TRUE,
+		bPowered=>	bPowered);
+	IF bPowered THEN
+		nMotorControlState	:= 2;
+	END_IF
+
+2:
+	// Initial Referencing
+	fb_JSReference(
+		motX	:=	motX,
+		motY	:=	motY,
+		motZ	:=	motZ,
+		bStartX	:=	TRUE,
+		bStartY	:=	TRUE,
+		bStartZ	:=	TRUE);
+	IF fb_JSReference.bReferenced THEN
+		fb_JSReference.bStartX	:=	FALSE;
+		fb_JSReference.bStartY	:=	FALSE;
+		fb_JSReference.bStartZ	:=	FALSE;
+		bBusy	:=	FALSE;
+		IF UserVar.OpMode = 1 THEN
+			nMotorControlState	:= 100;
+		ELSIF UserVar.OpMode = 2 THEN
+			nMotorControlState	:= 200;
+		END_IF
+	END_IF
+
+50:
+	fb_MotorPower(
+		motX	:=	motX,
+		motY	:=	motY,
+		motZ	:=	motZ,
+		bPowerX	:=	FALSE,
+		bPowerY	:=	FALSE,
+		bPowerZ	:=	FALSE);
+	IF NOT fb_MotorPower.bPowerBusy THEN
+		bBusy	:=	FALSE;
+		nMotorControlState	:=	0;
+	END_IF
+
+
+90:
+	UserVar.bRESET	:=	FALSE;
+	nMotorControlState	:=	50;
+	
+
+
+99:
+	IF UserVar.bRESET THEN
+		UserVar.bESTOP	:=	FALSE;
+		nMotorControlState	:=	90;
+	END_IF
+	
+
+100:
+	// Jog Mode
+	IF 	(UserVar.JogButtonX <> 0) OR
+		(UserVar.JogButtonY <> 0) OR
+		(UserVar.JogButtonZ <> 0) THEN
+		bBusy	:=	TRUE;
+		nMotorControlState	:=	110;
+	ELSIF UserVar.JogMovePos THEN
+		bBusy	:=	TRUE;
+		nMotorControlState	:=	120;
+	ELSIF 	UserVar.NordsonReadPressureBtn OR
+			UserVar.NordsonWritePressureBtn OR 
+			UserVar.LJ_S8000CaptureBtn THEN
+		bBusy	:=	TRUE;
+		nMotorControlState	:=	130;	// HMI Task
+	ELSE
+		bBusy	:=	FALSE;
+	END_IF
+	
+	IF	(fb_MotorPower.Power_X	<>	UserVar.JogPowerX) OR
+		(fb_MotorPower.Power_Y	<>	UserVar.JogPowerY) OR
+		(fb_MotorPower.Power_Z	<>	UserVar.JogPowerZ) THEN
+		nMotorControlState	:=	101;
+		bBusy	:=	TRUE;		
+	END_IF
+	
+	IF UserVar.OpMode <> 1 THEN
+		// Turning OFF
+		bBusy	:=	TRUE;
+		nMotorControlState	:=	50;
+	END_IF
+
+101:
+	// Power Changed
+	fb_MotorPower(
+		motX	:=	motX,
+		motY	:=	motY,
+		motZ	:=	motZ,
+		bPowerX	:=	UserVar.JogPowerX,
+		bPowerY	:=	UserVar.JogPowerY,
+		bPowerZ	:=	UserVar.JogPowerZ);
+	IF NOT fb_MotorPower.bPowerBusy THEN
+		fb_JSReference(
+			motX	:=	motX,
+			motY	:=	motY,
+			motZ	:=	motZ,
+			bStartX	:=	UserVar.JogPowerX,
+			bStartY	:=	UserVar.JogPowerY,
+			bStartZ	:=	UserVar.JogPowerZ);
+		IF (NOT (UserVar.JogPowerX OR UserVar.JogPowerY OR UserVar.JogPowerZ))
+			OR fb_JSReference.bReferenced THEN
+			bBusy	:=	FALSE;
+			nMotorControlState	:= 100;
+		END_IF
+	END_IF
+
+
+
+	
+	
+110:
+	fb_MCJogX(mot	:=	motX,
+		JogButton	:=	BOOL_TO_INT(UserVar.JogPowerX) * UserVar.JogButtonX);
+	fb_MCJogY(mot	:=	motY,
+		JogButton	:=	BOOL_TO_INT(UserVar.JogPowerY) * UserVar.JogButtonY);
+	fb_MCJogZ(mot	:=	motZ,
+		JogButton	:=	BOOL_TO_INT(UserVar.JogPowerZ) * UserVar.JogButtonZ);
+
+//	IF 
+//	END_IF
+	IF	(fb_MCJogX.bError OR 
+		 fb_MCJogY.bError OR
+		 fb_MCJogZ.bError) THEN
+		nMotorControlState :=	199;
+	ELSIF NOT (fb_MCJogX.bBusy OR
+			fb_MCJogY.bBusy OR
+			fb_MCJogZ.bBusy) THEN
+		nMotorControlState	:=	100;
+	END_IF
+
+120:
+	IF UserVar.JogPowerX THEN
+		fb_MoveAbsX(
+			Axis		:=	motX,
+			position	:=	STRING_TO_LREAL(UserVar.JogTargX),
+			velocity	:=	STRING_TO_LREAL(UserVar.JogTargVel)/60.0,
+			Execute		:=	TRUE);
+	END_IF
+	IF UserVar.JogPowerY THEN
+		fb_MoveAbsY(
+			Axis		:=	motY,
+			position	:=	STRING_TO_LREAL(UserVar.JogTargY),
+			velocity	:=	STRING_TO_LREAL(UserVar.JogTargVel)/60.0,
+			Execute		:=	TRUE);
+	END_IF
+	IF UserVar.JogPowerZ THEN
+		fb_MoveAbsZ(
+			Axis		:=	motZ,
+			position	:=	STRING_TO_LREAL(UserVar.JogTargZ),
+			velocity	:=	STRING_TO_LREAL(UserVar.JogTargVel)/60.0,
+			Execute		:=	TRUE);
+	END_IF
+	nMotorControlState	:=	121;
+	
+	
+
+121:
+	IF UserVar.JogPowerX THEN
+		fb_MoveAbsX(
+			Axis		:=	motX,
+			position	:=	STRING_TO_LREAL(UserVar.JogTargX),
+			velocity	:=	STRING_TO_LREAL(UserVar.JogTargVel)/60.0,
+			Execute		:=	FALSE);
+	END_IF
+	IF UserVar.JogPowerY THEN
+		fb_MoveAbsY(
+			Axis		:=	motY,
+			position	:=	STRING_TO_LREAL(UserVar.JogTargY),
+			velocity	:=	STRING_TO_LREAL(UserVar.JogTargVel)/60.0,
+			Execute		:=	FALSE);
+	END_IF
+	IF UserVar.JogPowerZ THEN
+		fb_MoveAbsZ(
+			Axis		:=	motZ,
+			position	:=	STRING_TO_LREAL(UserVar.JogTargZ),
+			velocity	:=	STRING_TO_LREAL(UserVar.JogTargVel)/60.0,
+			Execute		:=	FALSE);
+	END_IF
+	
+	IF NOT ((UserVar.JogPowerX AND fb_MoveAbsX.Busy) OR
+			(UserVar.JogPowerY AND fb_MoveAbsY.Busy) OR
+			(UserVar.JogPowerZ AND fb_MoveAbsZ.Busy)) THEN
+		UserVar.JogMovePos	:=	FALSE;
+		bBusy	:=	FALSE;
+		nMotorControlState	:=	100;
+	END_IF
+
+	
+130:
+	IF NOT (UserVar.NordsonReadPressureBtn OR
+			UserVar.NordsonWritePressureBtn OR
+			UserVar.LJ_S8000CaptureBtn) THEN
+		bBusy	:=	FALSE;
+		nMotorControlState	:= 100;
+	END_IF
+
+
+190:
+	fb_MCHaltX(
+		Axis	:=	motX,
+		Execute	:=	FALSE);
+	fb_MCHaltY(
+		Axis	:=	motY,
+		Execute	:=	FALSE);
+	fb_MCHaltZ(
+		Axis	:=	motZ,
+		Execute	:=	FALSE);
+	
+	fb_MoveAbsX(
+		Axis		:=	motX,
+		Execute		:=	FALSE);
+	fb_MoveAbsY(
+		Axis		:=	motY,
+		Execute		:=	FALSE);
+	fb_MoveAbsZ(
+		Axis		:=	motZ,
+		Execute		:=	FALSE);
+	
+	nMotorControlState	:=	191;
+		
+191:	
+	fb_MCJogX(mot	:=	motX,
+		JogButton	:=	0);
+	fb_MCJogY(mot	:=	motY,
+		JogButton	:=	0);
+	fb_MCJogZ(mot	:=	motZ,
+		JogButton	:=	0);
+	
+	fb_MotorReset(
+		motX	:=	motX,
+		motY	:=	motY,
+		motZ	:=	motZ,
+		bResetX	:=	fb_MCJogX.bError,
+		bResetY	:=	fb_MCJogY.bError,
+		bResetZ	:=	fb_MCJogZ.bError,
+		bReset	=>	bMotorReset);
+		
+	IF bMotorReset THEN
+		nMotorControlState	:=	192;
+	END_IF
+	
+	
+192:
+	fb_MotorReset(
+		motX	:=	motX,
+		motY	:=	motY,
+		motZ	:=	motZ,
+		bResetX	:=	FALSE,
+		bResetY	:=	FALSE,
+		bResetZ	:=	FALSE,
+		bReset	=>	bMotorReset);
+
+	nMotorControlState	:=	193;
+	
+193:
+	fb_MCJogX(mot	:=	motX,
+		JogButton	:=	0);
+	fb_MCJogY(mot	:=	motY,
+		JogButton	:=	0);
+	fb_MCJogZ(mot	:=	motZ,
+		JogButton	:=	0);
+	
+	UserVar.bRESET	:=	FALSE;
+	UserVar.JogMovePos	:=	FALSE;
+	nMotorControlState	:=	50;
+
+	
+199:
+	fb_MCHaltX(
+		Axis	:=	motX,
+		Execute	:=	TRUE);
+	fb_MCHaltY(
+		Axis	:=	motY,
+		Execute	:=	TRUE);
+	fb_MCHaltZ(
+		Axis	:=	motZ,
+		Execute	:=	TRUE);
+	IF (fb_MCHaltX.Done AND
+		fb_MCHaltY.Done AND
+		fb_MCHaltZ.Done)
+		AND UserVar.bRESET THEN// AND bMotorReset THEN
+		
+		UserVar.bESTOP	:=	FALSE;
+		nMotorControlState	:=	190;
+	END_IF
+
+	
+	
+200:
+	IF UserVar.SingleGCodeMode THEN
+		IF UserVar.SingleGCodeTRG THEN
+			UserVar.SingleGCodeTRG	:=	FALSE;
+			UserVar.RunningGCodeName	:=	HMIVar.CodeName;
+			bBusy	:=	TRUE;
+			bOpMcodeMonitor		:=	TRUE;
+			nMotorControlState	:=	201;
+		END_IF
+	ELSE
+		IF UserVar.ContinueGCode THEN
+			IF f_QueuePop(
+					pQueue := ADR(UserVar.GCodeNameQueue),
+					str => UserVar.RunningGCodeName) THEN
+				HMIVar.GCodeQueueString	:=	f_Queue_ToString(ADR(UserVar.GCodeNameQueue));
+				bBusy	:=	TRUE;
+				bOpMcodeMonitor		:=	TRUE;
+				nMotorControlState	:=	201;
+	//		ELSIF UserVar.OpMode <> 2 THEN
+	//			// Turning OFF
+	//			bBusy	:=	TRUE;
+	//			nMotorControlState	:=	50;
+			END_IF
+	//	ELSIF UserVar.OpMode <> 2 THEN
+	//		// Turning OFF
+	//		bBusy	:=	TRUE;
+	//		nMotorControlState	:=	50;
+		END_IF
+	END_IF
+
+	IF UserVar.OpMode <> 2 THEN
+		// Turning OFF
+		bBusy	:=	TRUE;
+		nMotorControlState	:=	50;
+	END_IF
+
+201:
+	IF bQ1UseLatched THEN
+		bQ1Reserved := TRUE;
+		IF NOT bQ1BuildStarted AND NOT bQ1Ready THEN
+			nQ1Interlock := 1;
+			nErrorState := 201;
+			bError := TRUE;
+			nMotorControlState := 299;
+		ELSE
+	// Initial interpolation group building
+	nInterpreterState	:=	ItpGetStateInterpreter(sNciToPlc:=inst_NcToPlc_NCI);
+	IF	nInterpreterState = Tc2_NCI.NCI_INTERPRETER_IDLE	THEN	
+		bQ1BuildStarted := TRUE;
+		fb_BuildGroupQ1(
+			bExecute	:= TRUE, 
+			nGroupId	:= ItpGetGroupId(sNciToPlc:=inst_NcToPlc_NCI) , 
+			nXAxisId	:= motX.NcToPlc.AxisId, 
+			nYAxisId	:= motY.NcToPlc.AxisId, 
+			nZAxisId	:= motZ.NcToPlc.AxisId,
+			nQ1AxisId := motQ1.NcToPlc.AxisId,
+			nQ2AxisId := 0, nQ3AxisId := 0, nQ4AxisId := 0, nQ5AxisId := 0);
+		IF NOT fb_BuildGroupQ1.bBusy THEN
+			IF NOT fb_BuildGroupQ1.bErr THEN
+				fb_RParamInit(
+					bExecute	:=	TRUE,
+					inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI);
+				nMotorControlState	:= 202;
+			ELSE
+				nErrorState	:= nMotorControlState;
+				bError	:= TRUE;
+				nMotorControlState	:= 299;
+			END_IF
+			ItpSetOverridePercent(
+				fOverridePercent	:=	100.0,
+				sPlcToNci	:=	inst_PlcToNc_NCI);
+		END_IF
+	
+	END_IF
+		END_IF
+	ELSE
+	// Initial interpolation group building
+	nInterpreterState	:=	ItpGetStateInterpreter(sNciToPlc:=inst_NcToPlc_NCI);
+	IF	nInterpreterState = Tc2_NCI.NCI_INTERPRETER_IDLE	THEN	
+		fb_BuildGroup(
+			bExecute	:= TRUE, 
+			nGroupId	:= ItpGetGroupId(sNciToPlc:=inst_NcToPlc_NCI) , 
+			nXAxisId	:= motX.NcToPlc.AxisId, 
+			nYAxisId	:= motY.NcToPlc.AxisId, 
+			nZAxisId	:= motZ.NcToPlc.AxisId);
+		IF NOT fb_BuildGroup.bBusy THEN
+			IF NOT fb_BuildGroup.bErr THEN
+				fb_RParamInit(
+					bExecute	:=	TRUE,
+					inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI);
+				nMotorControlState	:= 202;
+			ELSE
+				nErrorState	:= nMotorControlState;
+				bError	:= TRUE;
+				nMotorControlState	:= 299;
+			END_IF
+			ItpSetOverridePercent(
+				fOverridePercent	:=	100.0,
+				sPlcToNci	:=	inst_PlcToNc_NCI);
+		END_IF
+	
+	END_IF
+	END_IF
+
+202:
+	fb_BuildGroupQ1(bExecute := FALSE);
+	fb_BuildGroup(	bExecute	:= FALSE	); 
+	IF fb_RParamInit.bBusy THEN
+		fb_RParamInit(
+			bExecute	:=	FALSE,
+			inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI);
+		nMotorControlState	:= 205;			
+	END_IF
+
+205:
+	fb_RParamInit(
+		bExecute	:=	FALSE,
+		inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI);
+	IF NOT fb_RParamInit.bBusy THEN
+		IF fb_RParamInit.bErr THEN
+			nMotorControlState	:=	202;
+		ELSE
+			nMotorControlState	:=	210;
+		END_IF
+	END_IF
+	
+
+210:
+	fb_LoadProgEx(
+		sNciToPlc	:=	inst_NcToPlc_NCI,
+		bExecute	:=	TRUE,
+		sPrg		:=	f_MakeAbsPath(UserVar.RunningGCodeName),
+		nLength		:=	INT_TO_UDINT(LEN(f_MakeAbsPath(UserVar.RunningGCodeName))));
+	
+	IF NOT fb_LoadProgEx.bBusy THEN
+		IF NOT fb_LoadProgEx.bErr THEN
+			nMotorControlState	:=	211;
+		ELSE
+			nErrorState	:=	nMotorControlState;
+			bError	:=	TRUE;
+			nMotorControlState	:=	299;
+		END_IF
+		fb_LoadProgEx(
+			sNciToPlc	:=	inst_NcToPlc_NCI,
+			bExecute	:=	FALSE); 
+	END_IF
+	
+	
+211:
+	fb_StartStopEx(
+		bStart	:=	TRUE,
+		bStop	:=	FALSE,
+		tTimeOut	:= , 
+		sNciToPlc	:=	 inst_NcToPlc_NCI);
+	
+	IF NOT fb_StartStopEx.bBusy THEN
+		IF NOT fb_StartStopEx.bErr THEN
+			nMotorControlState	:=	212;
+		ELSE
+			nErrorState	:=	nMotorControlState;
+			bError	:=	TRUE;
+			nMotorControlState	:=	299;
+		END_IF
+		fb_StartStopEx(
+			bStart	:=	FALSE,
+			sNciToPlc	:=	 inst_NcToPlc_NCI); 
+	END_IF
+	
+212:
+	nInterpreterState	:= ItpGetStateInterpreter(sNciToPlc:=inst_NcToPlc_NCI);
+	IF nInterpreterState <> Tc2_NCI.NCI_INTERPRETER_READY THEN
+		// nci is running
+		nMotorControlState	:= 213;
+	END_IF
+
+
+213:
+	nInterpreterState	:= ItpGetStateInterpreter(sNciToPlc:=inst_NcToPlc_NCI);
+	IF	nInterpreterState = Tc2_NCI.NCI_INTERPRETER_READY THEN
+		// program has finished
+		fb_RParamInit(
+			bExecute	:=	TRUE,
+			inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI);
+		nMotorControlState	:= 230;
+	ELSIF 	nInterpreterState = Tc2_NCI.NCI_INTERPRETER_ABORTED 
+	OR 		ItpHasError(sNciToPlc:=inst_NcToPlc_NCI)  THEN
+		nErrorState	:= nMotorControlState;
+		bError	:= TRUE;
+		nMotorControlState	:= 299;
+	END_IF
+	
+230:
+	IF fb_RParamInit.bBusy THEN
+		fb_RParamInit(
+			bExecute	:=	FALSE,
+			inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI);
+		nMotorControlState	:=	231;
+	END_IF
+	
+231:
+	fb_RParamInit(
+		bExecute	:=	FALSE,
+		inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI);
+	IF NOT fb_RParamInit.bBusy THEN
+		IF fb_RParamInit.bErr THEN
+			nMotorControlState	:=	213;
+		ELSE
+			nMotorControlState	:=	250;
+		END_IF
+	END_IF
+	
+250:
+	IF (NOT UserVar.SingleGCodeMode) AND UserVar.ContinueGCode THEN
+		IF f_QueuePop(
+				pQueue := ADR(UserVar.GCodeNameQueue),
+				str => UserVar.RunningGCodeName) THEN
+			HMIVar.GCodeQueueString	:=	f_Queue_ToString(ADR(UserVar.GCodeNameQueue));
+			nMotorControlState	:=	210;
+		ELSE
+			nMotorControlState	:=	260;
+		END_IF
+	ELSE
+		nMotorControlState	:=	260;
+	END_IF
+	
+260:
+	fb_ClearGroup(
+		bExecute	:= TRUE, 
+		nGroupId	:= ItpGetGroupId(sNciToPlc:=inst_NcToPlc_NCI));
+
+	IF NOT fb_ClearGroup.bBusy THEN
+		IF NOT fb_ClearGroup.bErr THEN
+			bQ1Reserved := FALSE;
+			bQ1BuildStarted := FALSE;
+			fb_BuildGroupQ1(bExecute := FALSE);
+			nMotorControlState	:= 261;
+		ELSE
+			(* add error handling *)
+			nErrorState	:= nMotorControlState;
+			bError	:= TRUE;
+			nMotorControlState	:= 299;				
+		END_IF
+		fb_ClearGroup(bExecute:=FALSE); 
+	END_IF
+
+261:
+	fb_ResetEx(
+		bExecute:= TRUE, 
+		tTimeOut:= , 
+		sNciToPlc:= inst_NcToPlc_NCI, 
+		bBusy=> , 
+		bErr=> , 
+		nErrId=> );
+
+	IF NOT fb_ResetEx.bBusy THEN
+		IF NOT fb_ResetEx.bErr THEN
+			bBusy	:=	FALSE;
+			bOpMcodeMonitor		:=	FALSE;
+			nMotorControlState	:=	200;
+		ELSE
+			(* add error handling *)
+			nErrorState	:= nMotorControlState;
+			bError	:= TRUE;
+			nMotorControlState	:= 299;
+		END_IF
+		fb_ResetEx( bExecute:= FALSE, sNciToPlc:= inst_NcToPlc_NCI);
+	END_IF
+
+	
+290:
+	IF ItpIsEStopEx(inst_NcToPlc_NCI) THEN
+		fb_ItpEStop(
+			sNciToPlc	:=	inst_NcToPlc_NCI,
+			bExecute	:=	FALSE);
+		nMotorControlState	:=	291;
+	END_IF
+
+	
+291:
+	fb_ResetEx(
+		bExecute:= TRUE, 
+		sNciToPlc:= inst_NcToPlc_NCI);
+
+	IF NOT fb_ResetEx.bBusy THEN
+		IF NOT fb_ResetEx.bErr THEN
+			bBusy	:=	FALSE;
+			bOpMcodeMonitor		:=	FALSE;
+			nMotorControlState	:=	292;
+		ELSE
+			nErrorState	:= nMotorControlState;
+			bError	:= TRUE;
+			nMotorControlState	:= 9999;
+		END_IF
+		fb_ResetEx( bExecute:= FALSE, sNciToPlc:= inst_NcToPlc_NCI);
+	END_IF
+	
+
+292:
+	fb_ClearGroup(
+		bExecute	:= TRUE, 
+		nGroupId	:= ItpGetGroupId(sNciToPlc:=inst_NcToPlc_NCI));
+
+	IF NOT fb_ClearGroup.bBusy THEN
+		IF NOT fb_ClearGroup.bErr THEN
+			bQ1Reserved := FALSE;
+			bQ1BuildStarted := FALSE;
+			fb_BuildGroupQ1(bExecute := FALSE);
+			nMotorControlState	:= 50;
+		ELSE
+			nErrorState	:= nMotorControlState;
+			bError	:= TRUE;
+			nMotorControlState	:= 9999;				
+		END_IF
+		fb_ClearGroup(bExecute:=FALSE); 
+	END_IF
+
+
+	
+	
+299:
+	fb_ItpEStop(
+		sNciToPlc	:=	inst_NcToPlc_NCI,
+		bExecute	:=	TRUE);
+	IF UserVar.bRESET THEN
+		UserVar.ContinueGCode	:=	FALSE;
+		UserVar.bClearQueue	:=	TRUE;
+		UserVar.bESTOP	:=	FALSE;
+		nMotorControlState	:=	290;
+	END_IF
+
+	
+9999:
+	// No Answer
+	bBusy	:=	TRUE;
+
+END_CASE
+
+
+
+
+IF UserVar.bESTOP THEN
+	// ESTOP button Triggered	-->	bESTOP: TRUE
+	// ESTOP button released	-->	bESTOP: TRUE
+	// RESET button Triggered	--> bRESET: TRUE, bESTOP: FALSE
+		// 99/199/299 --> 90/190/290 (at eash state)
+	// 9-/19-/29- --> 50	: bRESET: FALSE
+	bBusy	:=	TRUE;
+	CASE UserVar.OpMode OF
+		0:
+			nMotorControlState	:=	99;
+		1:
+			nMotorControlState	:=	199;
+		2:
+			nMotorControlState	:=	299;
+	END_CASE
+ELSE
+	UserVar.bRESET	:=	FALSE;
+END_IF
+
+
+
+
+
+
+// Q1 reservation owns the NCI stop path even if OpMode was changed.
+IF bQ1Reserved AND UserVar.bESTOP THEN
+	nMotorControlState := 299;
+END_IF
+
+fb_HMITask();
+fb_Backend();
+
+
+
+(* CASE-INDEPENDENT LOOPS *)
+fb_ExtMessage(
+	inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI,
+	inst_PlcToNc_NCI	:=	inst_PlcToNc_NCI,
+	motX	:=	motX,
+	motY	:=	motY,
+	motZ	:=	motZ,
+	bBusy	:=	bBusy);
+
+IF bOpMcodeMonitor	THEN
+	fb_McodeMonitor(
+		inst_NcToPlc_NCI	:=	inst_NcToPlc_NCI,
+		inst_PlcToNc_NCI	:=	inst_PlcToNc_NCI);
+END_IF
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="MotorControl">
+      <LineId Id="27" Count="0" />
+      <LineId Id="361" Count="0" />
+      <LineId Id="364" Count="2" />
+      <LineId Id="472" Count="0" />
+      <LineId Id="367" Count="0" />
+      <LineId Id="473" Count="1" />
+      <LineId Id="631" Count="0" />
+      <LineId Id="362" Count="0" />
+      <LineId Id="1520" Count="0" />
+      <LineId Id="363" Count="0" />
+      <LineId Id="1522" Count="6" />
+      <LineId Id="1521" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="1531" Count="1" />
+      <LineId Id="1529" Count="0" />
+      <LineId Id="1533" Count="0" />
+      <LineId Id="1530" Count="0" />
+      <LineId Id="1534" Count="0" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="77" Count="0" />
+      <LineId Id="58" Count="0" />
+      <LineId Id="61" Count="4" />
+      <LineId Id="60" Count="0" />
+      <LineId Id="66" Count="0" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="67" Count="1" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="78" Count="0" />
+      <LineId Id="16" Count="3" />
+      <LineId Id="51" Count="2" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="1505" Count="2" />
+      <LineId Id="471" Count="0" />
+      <LineId Id="369" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="370" Count="0" />
+      <LineId Id="1413" Count="0" />
+      <LineId Id="372" Count="0" />
+      <LineId Id="33" Count="0" />
+      <LineId Id="649" Count="0" />
+      <LineId Id="651" Count="10" />
+      <LineId Id="76" Count="0" />
+      <LineId Id="1219" Count="0" />
+      <LineId Id="1215" Count="1" />
+      <LineId Id="1221" Count="0" />
+      <LineId Id="1217" Count="0" />
+      <LineId Id="1209" Count="0" />
+      <LineId Id="1220" Count="0" />
+      <LineId Id="1218" Count="0" />
+      <LineId Id="1210" Count="0" />
+      <LineId Id="1212" Count="2" />
+      <LineId Id="1211" Count="0" />
+      <LineId Id="650" Count="0" />
+      <LineId Id="359" Count="0" />
+      <LineId Id="336" Count="0" />
+      <LineId Id="376" Count="0" />
+      <LineId Id="354" Count="0" />
+      <LineId Id="380" Count="1" />
+      <LineId Id="478" Count="0" />
+      <LineId Id="377" Count="0" />
+      <LineId Id="382" Count="0" />
+      <LineId Id="479" Count="0" />
+      <LineId Id="384" Count="0" />
+      <LineId Id="814" Count="1" />
+      <LineId Id="830" Count="0" />
+      <LineId Id="816" Count="1" />
+      <LineId Id="480" Count="1" />
+      <LineId Id="378" Count="0" />
+      <LineId Id="612" Count="0" />
+      <LineId Id="537" Count="1" />
+      <LineId Id="540" Count="1" />
+      <LineId Id="554" Count="0" />
+      <LineId Id="539" Count="0" />
+      <LineId Id="614" Count="0" />
+      <LineId Id="592" Count="0" />
+      <LineId Id="596" Count="0" />
+      <LineId Id="610" Count="0" />
+      <LineId Id="593" Count="0" />
+      <LineId Id="595" Count="0" />
+      <LineId Id="533" Count="0" />
+      <LineId Id="386" Count="0" />
+      <LineId Id="535" Count="0" />
+      <LineId Id="577" Count="0" />
+      <LineId Id="582" Count="1" />
+      <LineId Id="581" Count="0" />
+      <LineId Id="578" Count="2" />
+      <LineId Id="551" Count="0" />
+      <LineId Id="585" Count="5" />
+      <LineId Id="584" Count="0" />
+      <LineId Id="570" Count="0" />
+      <LineId Id="576" Count="0" />
+      <LineId Id="571" Count="0" />
+      <LineId Id="552" Count="0" />
+      <LineId Id="572" Count="0" />
+      <LineId Id="536" Count="0" />
+      <LineId Id="555" Count="0" />
+      <LineId Id="597" Count="0" />
+      <LineId Id="609" Count="0" />
+      <LineId Id="599" Count="0" />
+      <LineId Id="598" Count="0" />
+      <LineId Id="387" Count="0" />
+      <LineId Id="416" Count="0" />
+      <LineId Id="422" Count="0" />
+      <LineId Id="426" Count="0" />
+      <LineId Id="425" Count="0" />
+      <LineId Id="429" Count="0" />
+      <LineId Id="428" Count="0" />
+      <LineId Id="417" Count="0" />
+      <LineId Id="435" Count="0" />
+      <LineId Id="434" Count="0" />
+      <LineId Id="1569" Count="2" />
+      <LineId Id="1568" Count="0" />
+      <LineId Id="1812" Count="2" />
+      <LineId Id="1811" Count="0" />
+      <LineId Id="467" Count="0" />
+      <LineId Id="399" Count="0" />
+      <LineId Id="390" Count="0" />
+      <LineId Id="1065" Count="0" />
+      <LineId Id="436" Count="0" />
+      <LineId Id="441" Count="0" />
+      <LineId Id="444" Count="0" />
+      <LineId Id="446" Count="0" />
+      <LineId Id="445" Count="0" />
+      <LineId Id="1068" Count="0" />
+      <LineId Id="1066" Count="0" />
+      <LineId Id="448" Count="3" />
+      <LineId Id="447" Count="0" />
+      <LineId Id="1069" Count="0" />
+      <LineId Id="1067" Count="0" />
+      <LineId Id="453" Count="3" />
+      <LineId Id="452" Count="0" />
+      <LineId Id="1071" Count="0" />
+      <LineId Id="458" Count="0" />
+      <LineId Id="1070" Count="0" />
+      <LineId Id="459" Count="0" />
+      <LineId Id="818" Count="0" />
+      <LineId Id="1017" Count="0" />
+      <LineId Id="1072" Count="0" />
+      <LineId Id="1044" Count="4" />
+      <LineId Id="1077" Count="0" />
+      <LineId Id="1073" Count="0" />
+      <LineId Id="1049" Count="4" />
+      <LineId Id="1076" Count="0" />
+      <LineId Id="1074" Count="0" />
+      <LineId Id="1054" Count="3" />
+      <LineId Id="1043" Count="0" />
+      <LineId Id="1075" Count="0" />
+      <LineId Id="1079" Count="0" />
+      <LineId Id="1019" Count="2" />
+      <LineId Id="1025" Count="2" />
+      <LineId Id="1018" Count="0" />
+      <LineId Id="1028" Count="0" />
+      <LineId Id="355" Count="0" />
+      <LineId Id="819" Count="0" />
+      <LineId Id="824" Count="1" />
+      <LineId Id="829" Count="0" />
+      <LineId Id="826" Count="2" />
+      <LineId Id="1742" Count="0" />
+      <LineId Id="1740" Count="0" />
+      <LineId Id="1164" Count="0" />
+      <LineId Id="1832" Count="7" />
+      <LineId Id="1831" Count="0" />
+      <LineId Id="1840" Count="0" />
+      <LineId Id="1848" Count="1" />
+      <LineId Id="1847" Count="0" />
+      <LineId Id="1853" Count="1" />
+      <LineId Id="1852" Count="0" />
+      <LineId Id="1856" Count="1" />
+      <LineId Id="1855" Count="0" />
+      <LineId Id="1846" Count="0" />
+      <LineId Id="1860" Count="0" />
+      <LineId Id="1858" Count="1" />
+      <LineId Id="1793" Count="4" />
+      <LineId Id="1792" Count="0" />
+      <LineId Id="1791" Count="0" />
+      <LineId Id="1778" Count="6" />
+      <LineId Id="1776" Count="0" />
+      <LineId Id="1798" Count="3" />
+      <LineId Id="1817" Count="0" />
+      <LineId Id="1651" Count="0" />
+      <LineId Id="1191" Count="0" />
+      <LineId Id="1804" Count="6" />
+      <LineId Id="1803" Count="0" />
+      <LineId Id="1589" Count="0" />
+      <LineId Id="1208" Count="0" />
+      <LineId Id="1629" Count="1" />
+      <LineId Id="1632" Count="4" />
+      <LineId Id="1631" Count="0" />
+      <LineId Id="1819" Count="0" />
+      <LineId Id="1638" Count="0" />
+      <LineId Id="1818" Count="0" />
+      <LineId Id="1637" Count="0" />
+      <LineId Id="1557" Count="0" />
+      <LineId Id="820" Count="0" />
+      <LineId Id="1821" Count="3" />
+      <LineId Id="1826" Count="1" />
+      <LineId Id="1825" Count="0" />
+      <LineId Id="1829" Count="1" />
+      <LineId Id="1828" Count="0" />
+      <LineId Id="1657" Count="0" />
+      <LineId Id="1841" Count="1" />
+      <LineId Id="1844" Count="1" />
+      <LineId Id="1188" Count="0" />
+      <LineId Id="1205" Count="0" />
+      <LineId Id="1183" Count="0" />
+      <LineId Id="1815" Count="0" />
+      <LineId Id="822" Count="0" />
+      <LineId Id="1816" Count="0" />
+      <LineId Id="72" Count="0" />
+      <LineId Id="1419" Count="0" />
+      <LineId Id="1416" Count="0" />
+      <LineId Id="1448" Count="0" />
+      <LineId Id="1443" Count="0" />
+      <LineId Id="1446" Count="1" />
+      <LineId Id="1445" Count="0" />
+      <LineId Id="1444" Count="0" />
+      <LineId Id="1420" Count="0" />
+      <LineId Id="1426" Count="16" />
+      <LineId Id="1418" Count="0" />
+      <LineId Id="1417" Count="0" />
+      <LineId Id="645" Count="0" />
+      <LineId Id="1422" Count="2" />
+      <LineId Id="1421" Count="0" />
+      <LineId Id="1425" Count="0" />
+      <LineId Id="484" Count="0" />
+      <LineId Id="482" Count="0" />
+      <LineId Id="81" Count="0" />
+      <LineId Id="80" Count="0" />
+      <LineId Id="74" Count="0" />
+      <LineId Id="89" Count="0" />
+      <LineId Id="96" Count="3" />
+      <LineId Id="94" Count="0" />
+      <LineId Id="977" Count="4" />
+      <LineId Id="1005" Count="0" />
+      <LineId Id="986" Count="7" />
+      <LineId Id="923" Count="0" />
+      <LineId Id="111" Count="0" />
+      <LineId Id="90" Count="0" />
+      <LineId Id="926" Count="0" />
+      <LineId Id="925" Count="0" />
+      <LineId Id="1010" Count="0" />
+      <LineId Id="1002" Count="0" />
+      <LineId Id="1007" Count="1" />
+      <LineId Id="1006" Count="0" />
+      <LineId Id="1004" Count="0" />
+      <LineId Id="998" Count="0" />
+      <LineId Id="949" Count="0" />
+      <LineId Id="948" Count="0" />
+      <LineId Id="951" Count="1" />
+      <LineId Id="954" Count="6" />
+      <LineId Id="950" Count="0" />
+      <LineId Id="924" Count="0" />
+      <LineId Id="115" Count="0" />
+      <LineId Id="75" Count="0" />
+      <LineId Id="117" Count="0" />
+      <LineId Id="122" Count="0" />
+      <LineId Id="126" Count="2" />
+      <LineId Id="130" Count="0" />
+      <LineId Id="132" Count="2" />
+      <LineId Id="146" Count="0" />
+      <LineId Id="148" Count="0" />
+      <LineId Id="150" Count="0" />
+      <LineId Id="145" Count="0" />
+      <LineId Id="141" Count="3" />
+      <LineId Id="123" Count="0" />
+      <LineId Id="161" Count="2" />
+      <LineId Id="167" Count="0" />
+      <LineId Id="169" Count="1" />
+      <LineId Id="334" Count="0" />
+      <LineId Id="171" Count="0" />
+      <LineId Id="164" Count="0" />
+      <LineId Id="173" Count="9" />
+      <LineId Id="184" Count="0" />
+      <LineId Id="172" Count="0" />
+      <LineId Id="165" Count="1" />
+      <LineId Id="216" Count="3" />
+      <LineId Id="215" Count="0" />
+      <LineId Id="220" Count="0" />
+      <LineId Id="224" Count="0" />
+      <LineId Id="116" Count="0" />
+      <LineId Id="226" Count="2" />
+      <LineId Id="889" Count="0" />
+      <LineId Id="892" Count="0" />
+      <LineId Id="894" Count="0" />
+      <LineId Id="967" Count="0" />
+      <LineId Id="230" Count="1" />
+      <LineId Id="234" Count="0" />
+      <LineId Id="236" Count="1" />
+      <LineId Id="225" Count="0" />
+      <LineId Id="221" Count="0" />
+      <LineId Id="965" Count="0" />
+      <LineId Id="968" Count="0" />
+      <LineId Id="974" Count="1" />
+      <LineId Id="969" Count="0" />
+      <LineId Id="976" Count="0" />
+      <LineId Id="966" Count="0" />
+      <LineId Id="964" Count="0" />
+      <LineId Id="887" Count="0" />
+      <LineId Id="904" Count="1" />
+      <LineId Id="902" Count="0" />
+      <LineId Id="888" Count="0" />
+      <LineId Id="896" Count="0" />
+      <LineId Id="910" Count="0" />
+      <LineId Id="907" Count="0" />
+      <LineId Id="909" Count="0" />
+      <LineId Id="908" Count="0" />
+      <LineId Id="897" Count="0" />
+      <LineId Id="239" Count="0" />
+      <LineId Id="222" Count="0" />
+      <LineId Id="695" Count="2" />
+      <LineId Id="705" Count="0" />
+      <LineId Id="720" Count="0" />
+      <LineId Id="704" Count="0" />
+      <LineId Id="717" Count="1" />
+      <LineId Id="694" Count="0" />
+      <LineId Id="708" Count="1" />
+      <LineId Id="689" Count="0" />
+      <LineId Id="241" Count="0" />
+      <LineId Id="240" Count="0" />
+      <LineId Id="262" Count="1" />
+      <LineId Id="258" Count="0" />
+      <LineId Id="260" Count="0" />
+      <LineId Id="264" Count="5" />
+      <LineId Id="271" Count="3" />
+      <LineId Id="261" Count="0" />
+      <LineId Id="277" Count="0" />
+      <LineId Id="276" Count="0" />
+      <LineId Id="279" Count="9" />
+      <LineId Id="648" Count="0" />
+      <LineId Id="711" Count="0" />
+      <LineId Id="289" Count="3" />
+      <LineId Id="294" Count="3" />
+      <LineId Id="278" Count="0" />
+      <LineId Id="1239" Count="0" />
+      <LineId Id="1225" Count="0" />
+      <LineId Id="1240" Count="0" />
+      <LineId Id="1242" Count="0" />
+      <LineId Id="1252" Count="1" />
+      <LineId Id="1250" Count="0" />
+      <LineId Id="1254" Count="0" />
+      <LineId Id="1251" Count="0" />
+      <LineId Id="1535" Count="0" />
+      <LineId Id="1257" Count="0" />
+      <LineId Id="1538" Count="15" />
+      <LineId Id="1536" Count="1" />
+      <LineId Id="1259" Count="0" />
+      <LineId Id="1258" Count="0" />
+      <LineId Id="1261" Count="7" />
+      <LineId Id="1270" Count="4" />
+      <LineId Id="1260" Count="0" />
+      <LineId Id="1276" Count="1" />
+      <LineId Id="1241" Count="0" />
+      <LineId Id="1224" Count="0" />
+      <LineId Id="1226" Count="0" />
+      <LineId Id="1228" Count="0" />
+      <LineId Id="1231" Count="1" />
+      <LineId Id="1236" Count="0" />
+      <LineId Id="1244" Count="0" />
+      <LineId Id="1243" Count="0" />
+      <LineId Id="1237" Count="1" />
+      <LineId Id="1227" Count="0" />
+      <LineId Id="1245" Count="0" />
+      <LineId Id="1148" Count="0" />
+      <LineId Id="1246" Count="0" />
+      <LineId Id="1249" Count="0" />
+      <LineId Id="1248" Count="0" />
+      <LineId Id="1247" Count="0" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="1138" Count="4" />
+      <LineId Id="1161" Count="2" />
+      <LineId Id="1174" Count="0" />
+      <LineId Id="1173" Count="0" />
+      <LineId Id="1149" Count="0" />
+      <LineId Id="1151" Count="1" />
+      <LineId Id="1154" Count="0" />
+      <LineId Id="1157" Count="3" />
+      <LineId Id="1153" Count="0" />
+      <LineId Id="1222" Count="1" />
+      <LineId Id="1150" Count="0" />
+      <LineId Id="1143" Count="4" />
+      <LineId Id="622" Count="1" />
+      <LineId Id="1137" Count="0" />
+      <LineId Id="1410" Count="0" />
+      <LineId Id="1409" Count="0" />
+      <LineId Id="632" Count="2" />
+      <LineId Id="1353" Count="1" />
+      <LineId Id="635" Count="3" />
+      <LineId Id="625" Count="2" />
+      <LineId Id="629" Count="1" />
+      <LineId Id="628" Count="0" />
+      <LineId Id="774" Count="0" />
+      <LineId Id="621" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

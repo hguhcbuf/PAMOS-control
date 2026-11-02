@@ -1,0 +1,92 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_MotorPower" Id="{e7be676a-daec-4eb2-9e05-d24f8bf7ede6}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_MotorPower
+VAR_INPUT
+	bPowerX	:	BOOL;
+	bPowerY	:	BOOL;
+	bPowerZ	:	BOOL;
+END_VAR
+VAR_OUTPUT
+	bPowered	:	BOOL	:=	FALSE;
+	bPowerBusy	:	BOOL	:=	FALSE;	
+	// Is valid even in POWER OFF operation
+	// If axis is not off even if off operation input, then bPowered := FALSE
+	
+	Power_X	: 	BOOL;
+	Power_Y	: 	BOOL;
+	Power_Z	:	BOOL;
+END_VAR
+VAR_IN_OUT
+	motX:	AXIS_REF;
+	motY:	AXIS_REF;
+	motZ:	AXIS_REF;
+END_VAR	
+VAR
+	MC_POWER_X	:	MC_POWER;
+	MC_POWER_Y	:	MC_POWER;
+	MC_POWER_Z	:	MC_POWER;
+	
+	
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[MC_POWER_X(
+	Axis	:=	motX,
+	Enable	:=	bPowerX,
+	Enable_Positive	:=	bPowerX,
+	Enable_Negative	:=	bPowerX,
+	Override:=	100.0,
+	Status	=>	Power_X);
+
+MC_POWER_Y(
+	Axis	:=	motY,
+	Enable	:=	bPowerY,
+	Enable_Positive	:=	bPowerY,
+	Enable_Negative	:=	bPowerY,
+	Override:=	100.0,
+	Status	=>	Power_Y);
+
+MC_POWER_Z(
+	Axis	:=	motZ,
+	Enable	:=	bPowerZ,
+	Enable_Positive	:=	bPowerZ,
+	Enable_Negative	:=	bPowerZ,
+	Override:=	100.0,
+	Status	=>	Power_Z);
+
+
+IF bPowerX OR bPowerY OR bPowerZ THEN
+	bPowered	:=	
+		((NOT bPowerX) OR Power_X) AND
+		((NOT bPowerY) OR Power_Y) AND
+		((NOT bPowerZ) OR Power_Z);
+ELSE
+	bPowered	:=	FALSE;
+END_IF
+
+bPowerBusy	:=
+	(bPowerX XOR Power_X) OR
+	(bPowerY XOR Power_Y) OR
+	(bPowerZ XOR Power_Z);]]></ST>
+    </Implementation>
+    <LineIds Name="FB_MotorPower">
+      <LineId Id="29" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="41" Count="3" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="49" Count="5" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="63" Count="0" />
+      <LineId Id="56" Count="5" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="17" Count="6" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="67" Count="3" />
+      <LineId Id="66" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

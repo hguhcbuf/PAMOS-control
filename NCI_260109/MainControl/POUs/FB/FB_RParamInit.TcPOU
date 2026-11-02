@@ -1,0 +1,114 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_RParamInit" Id="{1fba08f7-68e7-45dd-8820-debf83ddb4b9}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_RParamInit
+VAR_INPUT
+	bExecute	:	BOOL	:=	FALSE;
+END_VAR
+VAR_OUTPUT
+	bBusy		:	BOOL	:=	FALSE;
+	bErr		:	BOOL	:=	FALSE;
+END_VAR
+VAR_IN_OUT
+	inst_NcToPlc_NCI	:	NCTOPLC_NCICHANNEL_REF;
+END_VAR
+VAR
+	BusyIdx		:	DINT	:=	0;	
+	nState		:	DINT	:=	0;
+	fb_WriteRParams	:	ItpWriteRParams;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE nState OF
+	
+0:
+	IF bExecute THEN
+		bBusy	:=	TRUE;
+		bErr	:=	FALSE;
+		nState	:=	1;
+		BusyIdx	:=	0;
+	END_IF
+
+1:
+	fb_WriteRParams(
+		bExecute	:=	TRUE,
+		nChnId		:=	inst_NcToPlc_NCI.ChnId,
+		pAddr		:=	ADR(UserVar.R_InitVal),
+		nIndex		:=	TO_DINT(UserVar.R_Params[BusyIdx]),
+		nCount		:=	1);
+	nState	:=	2;
+
+
+2:
+	IF fb_WriteRParams.bBusy THEN
+		fb_WriteRParams(
+			bExecute	:=	FALSE,
+			nChnId		:=	inst_NcToPlc_NCI.ChnId,
+			pAddr		:=	ADR(UserVar.R_InitVal),
+			nIndex		:=	TO_DINT(UserVar.R_Params[BusyIdx]),
+			nCount		:=	1);
+		nState	:=	3;
+	END_IF
+	
+
+3:	
+	fb_WriteRParams(	bExecute	:=	FALSE);
+	IF NOT fb_WriteRParams.bBusy THEN
+		IF fb_WriteRParams.bErr THEN
+			bErr	:=	TRUE;
+			bBusy	:=	FALSE;
+			nState	:=	0;
+		ELSE
+			BusyIdx	:=	BusyIdx	+	1;
+			IF BusyIdx 	>=	(SIZEOF(UserVar.R_Params) / 2) THEN
+				bBusy	:=	FALSE;
+				nState	:=	0;
+			ELSE
+				nState	:=	1;
+			END_IF
+		END_IF
+	END_IF
+
+END_CASE]]></ST>
+    </Implementation>
+    <LineIds Name="FB_RParamInit">
+      <LineId Id="16" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="24" Count="0" />
+      <LineId Id="130" Count="0" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="22" Count="1" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="33" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="37" Count="1" />
+      <LineId Id="45" Count="2" />
+      <LineId Id="53" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="52" Count="0" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="58" Count="4" />
+      <LineId Id="54" Count="0" />
+      <LineId Id="132" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="63" Count="0" />
+      <LineId Id="65" Count="0" />
+      <LineId Id="68" Count="0" />
+      <LineId Id="73" Count="0" />
+      <LineId Id="67" Count="0" />
+      <LineId Id="116" Count="0" />
+      <LineId Id="128" Count="1" />
+      <LineId Id="127" Count="0" />
+      <LineId Id="117" Count="0" />
+      <LineId Id="120" Count="0" />
+      <LineId Id="122" Count="4" />
+      <LineId Id="119" Count="0" />
+      <LineId Id="118" Count="0" />
+      <LineId Id="75" Count="0" />
+      <LineId Id="131" Count="0" />
+      <LineId Id="30" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

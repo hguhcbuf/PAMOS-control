@@ -1,0 +1,198 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_ExtMessage" Id="{e56684fc-3d61-45ed-a80b-dd0d09f8ab41}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_ExtMessage
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+
+	
+END_VAR
+VAR_IN_OUT
+	motX:	AXIS_REF;
+	motY:	AXIS_REF;
+	motZ:	AXIS_REF;
+	bBusy	:	BOOL;
+	inst_NcToPlc_NCI	:	NCTOPLC_NCICHANNEL_REF;
+	inst_PlcToNc_NCI	:	PLCTONC_NCICHANNEL_REF;
+END_VAR
+
+VAR
+	ActPosX	:	LREAL;
+	ActPosY	:	LREAL;
+	ActPosZ	:	LREAL;
+	
+	ActVelX	:	LREAL;
+	ActVelY	:	LREAL;
+	ActVelZ	:	LREAL;
+	
+	ActAccX	:	LREAL;
+	ActAccY	:	LREAL;
+	ActAccZ	:	LREAL;
+	
+	SetPosX	:	LREAL;
+	SetPosY	:	LREAL;
+	SetPosZ	:	LREAL;
+	
+	SetVelX	:	LREAL;
+	SetVelY	:	LREAL;
+	SetVelZ	:	LREAL;
+	
+	SetAccX	:	LREAL;
+	SetAccY	:	LREAL;
+	SetAccZ	:	LREAL;
+
+
+	fb_AdsRead	:	ADSREAD;
+	nTimerCnt	:	UDINT	:=	0;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[ActPosX	:=	motX.NcToPlc.ActPos;
+ActPosY	:=	motY.NcToPlc.ActPos;
+ActPosZ	:=	motZ.NcToPlc.ActPos;
+
+ActVelX	:=	motX.NcToPlc.ActVelo;
+ActVelY	:=	motY.NcToPlc.ActVelo;
+ActVelZ	:=	motZ.NcToPlc.ActVelo;
+
+ActAccX	:=	motX.NcToPlc.ActAcc;
+ActAccY	:=	motY.NcToPlc.ActAcc;
+ActAccZ	:=	motZ.NcToPlc.ActAcc;
+
+SetPosX	:=	motX.NcToPlc.SetPos;
+SetPosY	:=	motY.NcToPlc.SetPos;
+SetPosZ	:=	motZ.NcToPlc.SetPos;
+
+SetVelX	:=	motX.NcToPlc.SetVelo;
+SetVelY	:=	motY.NcToPlc.SetVelo;
+SetVelZ	:=	motZ.NcToPlc.SetVelo;
+
+SetAccX	:=	motX.NcToPlc.SetAcc;
+SetAccY	:=	motY.NcToPlc.SetAcc;
+SetAccZ	:=	motZ.NcToPlc.SetAcc;
+
+HMIVar.sActPosX  :=  LREAL_TO_FMTSTR(ActPosX, 3, TRUE);
+HMIVar.sActPosY  :=  LREAL_TO_FMTSTR(ActPosY, 3, TRUE);
+HMIVar.sActPosZ  :=  LREAL_TO_FMTSTR(ActPosZ, 3, TRUE);
+
+HMIVar.sActVelX  :=  LREAL_TO_FMTSTR(ActVelX, 3, TRUE);
+HMIVar.sActVelY  :=  LREAL_TO_FMTSTR(ActVelY, 3, TRUE);
+HMIVar.sActVelZ  :=  LREAL_TO_FMTSTR(ActVelZ, 3, TRUE);
+
+HMIVar.sActAccX  :=  LREAL_TO_FMTSTR(ActAccX, 3, TRUE);
+HMIVar.sActAccY  :=  LREAL_TO_FMTSTR(ActAccY, 3, TRUE);
+HMIVar.sActAccZ  :=  LREAL_TO_FMTSTR(ActAccZ, 3, TRUE);
+
+HMIVar.sSetPosX  :=  LREAL_TO_FMTSTR(SetPosX, 3, TRUE);
+HMIVar.sSetPosY  :=  LREAL_TO_FMTSTR(SetPosY, 3, TRUE);
+HMIVar.sSetPosZ  :=  LREAL_TO_FMTSTR(SetPosZ, 3, TRUE);
+
+HMIVar.sSetVelX  :=  LREAL_TO_FMTSTR(SetVelX, 3, TRUE);
+HMIVar.sSetVelY  :=  LREAL_TO_FMTSTR(SetVelY, 3, TRUE);
+HMIVar.sSetVelZ  :=  LREAL_TO_FMTSTR(SetVelZ, 3, TRUE);
+
+HMIVar.sSetAccX  :=  LREAL_TO_FMTSTR(SetAccX, 3, TRUE);
+HMIVar.sSetAccY  :=  LREAL_TO_FMTSTR(SetAccY, 3, TRUE);
+HMIVar.sSetAccZ  :=  LREAL_TO_FMTSTR(SetAccZ, 3, TRUE);
+
+HMIVar.EstimatedTime	:=	CONCAT(LREAL_TO_FMTSTR(PYADSPort.nEstTime, 3, TRUE), 's');
+
+
+
+HMIVar.bNaviActive	:=	(NOT bBusy);
+
+IF (UserVar.Auto_CodeType <> 0) THEN
+	IF  HMIVar.CodeName <> '' THEN
+		CASE UserVar.Auto_CodeType OF
+		1:
+			IF f_QueuePush(HMIVar.CodeName, ADR(UserVar.GCodeNameQueue)) THEN
+				UserVar.Auto_CodeType	:=	0;
+				HMIVar.GCodeQueueString	:=	f_Queue_ToString(ADR(UserVar.GCodeNameQueue));
+			END_IF
+//			UserVar.QueuedGCodeName	:=	HMIVar.CodeName;	
+		END_CASE		
+	ELSE
+		UserVar.Auto_CodeType	:=	0;
+	END_IF
+	
+END_IF
+
+
+
+UserVar.CurrBlockNum	:=	ItpGetBlockNumber(inst_NcToPlc_NCI);
+
+IF UserVar.CurrBlockNum <> 0 THEN
+	HMIVar.CurrBlockNumSTR	:=	CONCAT('N', UDINT_TO_STRING(UserVar.CurrBlockNum));
+ELSE
+	HMIVar.CurrBlockNumSTR	:=	'-';
+END_IF
+
+
+
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_ExtMessage">
+      <LineId Id="9" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="38" Count="1" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="56" Count="1" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="23" Count="2" />
+      <LineId Id="47" Count="2" />
+      <LineId Id="46" Count="0" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="58" Count="1" />
+      <LineId Id="42" Count="0" />
+      <LineId Id="65" Count="0" />
+      <LineId Id="64" Count="0" />
+      <LineId Id="103" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="149" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="2" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="150" Count="0" />
+      <LineId Id="33" Count="0" />
+      <LineId Id="104" Count="1" />
+      <LineId Id="151" Count="0" />
+      <LineId Id="36" Count="1" />
+      <LineId Id="106" Count="0" />
+      <LineId Id="152" Count="0" />
+      <LineId Id="107" Count="0" />
+      <LineId Id="40" Count="1" />
+      <LineId Id="153" Count="0" />
+      <LineId Id="108" Count="1" />
+      <LineId Id="44" Count="1" />
+      <LineId Id="446" Count="2" />
+      <LineId Id="110" Count="1" />
+      <LineId Id="156" Count="0" />
+      <LineId Id="155" Count="0" />
+      <LineId Id="170" Count="0" />
+      <LineId Id="184" Count="6" />
+      <LineId Id="182" Count="0" />
+      <LineId Id="171" Count="0" />
+      <LineId Id="173" Count="0" />
+      <LineId Id="172" Count="0" />
+      <LineId Id="160" Count="0" />
+      <LineId Id="158" Count="0" />
+      <LineId Id="338" Count="0" />
+      <LineId Id="396" Count="1" />
+      <LineId Id="339" Count="0" />
+      <LineId Id="399" Count="0" />
+      <LineId Id="398" Count="0" />
+      <LineId Id="345" Count="0" />
+      <LineId Id="400" Count="2" />
+      <LineId Id="269" Count="0" />
+      <LineId Id="258" Count="1" />
+      <LineId Id="261" Count="0" />
+      <LineId Id="256" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

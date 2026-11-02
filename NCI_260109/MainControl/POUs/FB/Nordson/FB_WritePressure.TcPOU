@@ -1,0 +1,82 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_WritePressure" Id="{b4fb90ea-51b4-44dd-b4a6-820626a76339}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_WritePressure
+VAR_INPUT
+	bExecute	:	BOOL	:=	FALSE;
+	Pressure	:	REAL	:=	0.0;
+END_VAR
+VAR_OUTPUT
+	bBusy		:	BOOL	:=	FALSE;
+	bErr		:	BOOL	:=	FALSE;
+END_VAR
+VAR
+	nState		:	UDINT	:=	0;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// bNordWriteAcc 키면서 Press 값 넣고
+// busy state로 올림
+
+// PYADS에서 press 를 읽어서 입력하고
+// 만약 실패시 busy 끄면서 fail 올리고
+// 다 입력되면 bNordWriteAcc 끄기
+
+
+CASE nState OF
+
+0:
+	IF bExecute	THEN
+		PYADSPort.bNordWriteReq	:=	TRUE;
+		PYADSPort.nNordPress	:=	Pressure;
+		bBusy	:=	TRUE;
+		nState	:=	1;
+	END_IF
+
+1:
+	IF NOT PYADSPort.bNordWriteReq THEN
+		IF PYADSPort.bNordWriteErr THEN
+			PYADSPort.bNordWriteErr	:=	FALSE;
+			PYADSPort.nNordPress	:=	0.0;
+			bErr	:=	TRUE;
+		ELSE
+			bErr	:=	FALSE;
+		END_IF
+			bBusy	:=	FALSE;
+			nState	:=	0;		
+	END_IF
+END_CASE]]></ST>
+    </Implementation>
+    <LineIds Name="FB_WritePressure">
+      <LineId Id="9" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="30" Count="1" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="42" Count="0" />
+      <LineId Id="53" Count="1" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="52" Count="0" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="23" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

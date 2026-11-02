@@ -1,0 +1,84 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_TimeCalculator" Id="{fea13a29-150f-4a48-a8ca-8d5fb95da759}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_TimeCalculator
+VAR
+	fbLocalTime		:	FB_LocalSystemTime := (bEnable := TRUE, dwCycle := 1);
+
+    stPy      : TIMESTRUCT;
+	
+	
+	    // 추가: Timezone 정보 & 변환 FB
+    fbGetTz   : FB_GetTimeZoneInformation;
+    fbLoc2Utc : FB_TzSpecificLocalTimeToSystemTime;
+    fbUtc2Loc : FB_SystemTimeToTzSpecificLocalTime;
+
+    tzInfo    : ST_TimeZoneInformation;
+    bTzReady  : BOOL := FALSE;
+
+    stNowLocal : TIMESTRUCT;
+    stNowUtc   : TIMESTRUCT;
+
+    dtNowUtc   : DT;
+    dtPy       : DT;
+
+    nowSec     : DWORD;
+    pySec      : DWORD;
+    diff       : LINT;
+
+    stPyUtc    : TIMESTRUCT;
+    stPyLocal  : TIMESTRUCT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// 0) Timezone 정보 1회 확보 (부팅 후 한 번만)
+IF NOT bTzReady THEN
+    fbGetTz(bExecute := TRUE, sNetID := '');
+    IF (NOT fbGetTz.bBusy) THEN
+        IF (NOT fbGetTz.bError) THEN
+            tzInfo   := fbGetTz.tzInfo;
+            bTzReady := TRUE;
+        END_IF
+    END_IF
+END_IF
+
+// 1) 로컬 시간 업데이트
+fbLocalTime();
+
+IF bTzReady AND fbLocalTime.bValid THEN
+    // (A) PLC 로컬(Seoul) 시간
+    stNowLocal := fbLocalTime.systemTime;
+
+    // (B) 로컬 -> UTC 변환 후 DT로 변환 (비교 기준 통일)
+    fbLoc2Utc(in := stNowLocal, tzInfo := tzInfo, out => stNowUtc);
+    stNowUtc.wMilliseconds := 0;
+    dtNowUtc := SYSTEMTIME_TO_DT(stNowUtc);
+
+    // (C) Python에서 받은 DT (권장: UTC epoch seconds로 write됨)
+    dtPy := PYADSPort.dtHeartbeatTime;
+
+    // (D) 초 단위 비교
+    nowSec := DT_TO_DWORD(dtNowUtc);
+    pySec  := DT_TO_DWORD(dtPy);
+    diff   := DWORD_TO_LINT(nowSec) - DWORD_TO_LINT(pySec);
+
+    UserVar.gDiffSec := diff;
+    UserVar.gInSync  := (ABS(diff) <= 5);
+
+    // (E) 표시용 문자열
+    // PLC 로컬(Seoul) 표시
+    UserVar.gPlcStr := SYSTEMTIME_TO_STRING(stNowLocal);
+
+    // Python(UTC DT) -> 로컬(Seoul)로 변환해서 표시
+    stPyUtc := DT_TO_SYSTEMTIME(dtPy);
+    fbUtc2Loc(in := stPyUtc, tzInfo := tzInfo, out => stPyLocal);
+    UserVar.gPyStr := SYSTEMTIME_TO_STRING(stPyLocal);
+END_IF
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_TimeCalculator">
+      <LineId Id="83" Count="42" />
+      <LineId Id="81" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

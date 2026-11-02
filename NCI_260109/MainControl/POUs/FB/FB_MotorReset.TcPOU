@@ -1,0 +1,67 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_MotorReset" Id="{da498e27-6e66-48cb-a43c-531711c64104}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_MotorReset
+VAR_INPUT
+	bResetX	:	BOOL;
+	bResetY	:	BOOL;
+	bResetZ	:	BOOL;
+END_VAR
+VAR_OUTPUT
+	bReset	: BOOL := FALSE;
+END_VAR
+VAR_IN_OUT
+	motX:	AXIS_REF;
+	motY:	AXIS_REF;
+	motZ:	AXIS_REF;
+END_VAR
+VAR
+	MC_RESET_X	:	MC_RESET;
+	MC_RESET_Y	:	MC_RESET;
+	MC_RESET_Z	:	MC_RESET;
+	
+	Done_X	:	BOOL;
+	Done_Y	:	BOOL;
+	Done_Z	:	BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[MC_RESET_X(
+	Axis	:=	motX,
+	Execute	:=	bResetX,
+	Done	=>	Done_X);
+	
+MC_RESET_Y(
+	Axis	:=	motY,
+	Execute	:=	bResetY,
+	Done	=>	Done_Y);
+	
+MC_RESET_Z(
+	Axis	:=	motZ,
+	Execute	:=	bResetZ,
+	Done	=>	Done_Z);
+	
+	
+IF bResetX OR bResetY OR bResetZ THEN
+	bReset	:=	
+		((NOT bResetX) OR Done_X) AND
+		((NOT bResetY) OR Done_Y) AND
+		((NOT bResetZ) OR Done_Z);
+ELSE
+	bReset	:=	TRUE; ///
+END_IF
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_MotorReset">
+      <LineId Id="27" Count="2" />
+      <LineId Id="33" Count="1" />
+      <LineId Id="59" Count="2" />
+      <LineId Id="41" Count="1" />
+      <LineId Id="62" Count="2" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="65" Count="1" />
+      <LineId Id="51" Count="7" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

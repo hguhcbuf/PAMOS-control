@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_Jog" Id="{7aa4005f-be43-41da-b380-71f88d9e71ed}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Jog
+VAR_INPUT
+	JogButton	:	INT;
+END_VAR
+VAR_OUTPUT
+	bBusy		:	BOOL;
+	bError		:	BOOL;
+END_VAR
+VAR_IN_OUT
+	mot			:	AXIS_REF;
+END_VAR
+VAR
+	fb_MCJog	:	MC_Jog;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE ABS(JogButton) OF
+	0:	fb_MCJog(
+			Axis	:=	mot);
+	1:	fb_MCJog(
+			Axis	:=	mot,
+			Mode	:=	E_JogMode.MC_JOGMODE_STANDARD_SLOW);
+	2:	fb_MCJog(
+			Axis	:=	mot,
+			Mode	:=	E_JogMode.MC_JOGMODE_STANDARD_FAST);
+	3:	fb_MCJog(
+			Axis	:=	mot,
+			Mode	:=	E_JogMode.MC_JOGMODE_CONTINOUS,
+			Velocity:=	STRING_TO_LREAL(UserVar.JogTargVel)/60.0);
+END_CASE
+
+IF JogButton > 0 THEN
+	fb_MCJog.JogForward	:=	TRUE;
+	fb_MCJog.JogBackwards	:=	FALSE;
+END_IF
+
+IF JogButton < 0 THEN
+	fb_MCJog.JogForward	:=	FALSE;
+	fb_MCJog.JogBackwards	:=	TRUE;
+END_IF
+
+IF JogButton = 0 THEN
+	fb_MCJog.JogForward	:=	FALSE;
+	fb_MCJog.JogBackwards	:=	FALSE;
+END_IF
+
+bBusy	:=	fb_MCJog.Busy;
+bError	:=	fb_MCJog.Error;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_Jog">
+      <LineId Id="27" Count="0" />
+      <LineId Id="71" Count="0" />
+      <LineId Id="73" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="46" Count="0" />
+      <LineId Id="29" Count="1" />
+      <LineId Id="45" Count="0" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="54" Count="3" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="40" Count="0" />
+      <LineId Id="33" Count="3" />
+      <LineId Id="41" Count="0" />
+      <LineId Id="37" Count="2" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="47" Count="2" />
+      <LineId Id="42" Count="0" />
+      <LineId Id="52" Count="0" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="87" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

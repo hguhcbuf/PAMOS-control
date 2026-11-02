@@ -1,0 +1,41 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="MFuncs" Id="{4d04b33f-0c84-4a71-865b-8f69cfecd448}">
+    <Declaration><![CDATA[TYPE MFuncs :
+//	M: 0 ~ 159
+//	NOT TO USE THESE M-FUNCTIONS
+//  2	(Program end)
+//	17	(End of subprogram)
+//	30	(Program end with delection of all fast M functions)
+(
+	M_NordsonExtOn		:=	10,
+	M_NordsonExtOff 	:=	11,
+
+	M_MicrofabExtOn		:=	20,
+	M_MicrofabExtOff	:=	21,
+	
+	M_LJ_S8000TRG		:=	50,
+	
+	
+	M_NordsonPresTRG100	:=	100,
+	M_NordsonPresTRG101	:=	101,
+	M_NordsonPresTRG102	:=	102,
+	M_NordsonPresTRG103	:=	103,
+	M_NordsonPresTRG104	:=	104,
+	M_NordsonPresTRG105	:=	105,
+	M_NordsonPresTRG106	:=	106,
+	M_NordsonPresTRG107	:=	107,
+	M_NordsonPresTRG108	:=	108,
+	M_NordsonPresTRG109	:=	109,
+	
+	M_MicrofabIntTRG110 :=	110,
+	M_MicrofabIntTRG111 :=	111,
+	M_MicrofabIntTRG112 :=	112,
+	
+	
+	M_RHskTRG			:=	150
+	
+);
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

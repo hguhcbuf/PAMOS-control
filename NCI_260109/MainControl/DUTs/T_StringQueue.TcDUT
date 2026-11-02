@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="T_StringQueue" Id="{db6b0604-bd81-43a7-a2c2-3d0050f1d8e8}">
+    <Declaration><![CDATA[TYPE T_StringQueue :
+STRUCT
+    Buffer : ARRAY[0..19] OF STRING(255); // 큐 크기 20
+    Head   : INT	:=	0;  // Pop 위치
+    Tail   : INT	:=	0;  // Push 위치
+    Count  : INT	:=	0;  // 현재 개수
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

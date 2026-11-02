@@ -1,0 +1,78 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_BackendManager" Id="{45f18ff2-5cbb-4c14-a149-57d5c0e3bb8d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_BackendManager
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR
+	BackendStartState	:	UDINT	:=	0;
+	
+	fbStart  : NT_StartProcess;
+	fb_TimeCalc	:	FB_TimeCalculator;
+	bTimerActive	:	BOOL	:=	FALSE;
+	nTimerState	:	UDINT	:=	0;
+	nTimerCnt	:	UDINT	:=	0;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE BackendStartState OF
+	0:
+		fbStart(
+			NETID     := '',
+			PATHSTR   := 'C:\ProgramData\miniconda3\envs\ERC_CONTROL_BACKEND\pythonw.exe',
+			DIRNAME   := 'C:\Users\Administrator\Documents\ERC\PythonProjects\PythonBackend\NCI_260109',
+			COMNDLINE := '"C:\Users\Administrator\Documents\ERC\PythonProjects\PythonBackend\NCI_260109\main.py"',
+			START     := TRUE,
+			TMOUT     := T#5S
+		);
+		IF fbStart.BUSY THEN
+			BackendStartState	:=	1;
+		END_IF
+	
+	1:
+		fbStart(START:=	FALSE);
+		BackendStartState	:=	2;
+		UserVar.bBackendStarted	:=	TRUE;
+		PYADSPort.bHeartbeat	:=	TRUE;
+		bTimerActive	:=	TRUE;
+		
+	2:
+		IF nTimerCnt >= 200 THEN
+			BackendStartState	:=	3;
+			nTimerCnt	:=	0;
+		END_IF
+	
+	3:
+		IF nTimerCnt >= 50 THEN
+			PYADSPort.bHeartbeat	:=	TRUE;
+			BackendStartState	:=	4;
+		END_IF
+	4:
+		IF nTimerCnt >= 100 THEN
+			IF UserVar.gInSync THEN
+				nTimerCnt	:=	0;
+				BackendStartState	:=	3;
+			ELSE
+				UserVar.bBackendStarted	:=	FALSE;
+				bTimerActive	:=	FALSE;
+				nTimerCnt	:=	0;
+				BackendStartState	:=	0;
+			END_IF
+		END_IF
+		
+END_CASE
+
+
+IF bTimerActive	THEN
+	fb_TimeCalc();
+	nTimerCnt	:=	nTimerCnt + 1;
+END_IF]]></ST>
+    </Implementation>
+    <LineIds Name="FB_BackendManager">
+      <LineId Id="10" Count="50" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

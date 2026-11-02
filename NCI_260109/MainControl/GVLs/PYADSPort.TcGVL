@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="PYADSPort" Id="{1b915db9-795b-41e6-8a22-6d41170b83cb}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	// Nordson
+	bNordWriteReq	:	BOOL	:=	FALSE;
+	bNordWriteErr	:	BOOL	:=	FALSE;
+	bNordReadReq	:	BOOL	:=	FALSE;
+	bNordReadErr	:	BOOL	:=	FALSE;
+	nNordPress		:	REAL	:=	0.0;
+	
+	
+	bHeartbeat		:	BOOL	:=	FALSE;
+	dtHeartbeatTime	:	DT;
+	
+	bEstTimeReq		:	BOOL	:=	FALSE;
+	bEstTimeErr		:	BOOL	:=	FALSE;
+	nEstTime		:	REAL	:=	0.0;	
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

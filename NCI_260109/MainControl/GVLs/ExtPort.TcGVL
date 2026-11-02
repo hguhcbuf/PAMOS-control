@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="ExtPort" Id="{d1b075ea-17b2-42fb-b7a5-d88842c287fd}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	// ExtPort.EL2124_OUT[0]	:	MicroFab Ext 1
+	EL2124_OUT	AT%Q*	:	ARRAY[0..3]	OF	BOOL;
+	
+	// ExtPort.EL2634_OUT[0]	:	Nordson Ext 1
+	EL2634_OUT	AT%Q*	:	ARRAY[0..3]	OF	BOOL;
+	
+	LJ_S8000_bBusy		AT%I*	:	BOOL;
+	LJ_S8000_bTRG_ack	AT%I*	:	BOOL;
+	LJ_S8000_bReady		AT%I*	:	BOOL;
+	LJ_S8000_bTRG		AT%Q*	:	BOOL;
+	
+	EL1008_IN	AT%I*	:	ARRAY[0..7]	OF	BOOL;
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

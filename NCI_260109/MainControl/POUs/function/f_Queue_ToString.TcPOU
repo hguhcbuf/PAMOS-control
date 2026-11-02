@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="f_Queue_ToString" Id="{24f277d9-0289-480c-9420-6b17c4a970cb}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION f_Queue_ToString : STRING(8192)
+VAR_INPUT
+    pQueue : POINTER TO T_StringQueue;
+END_VAR
+VAR
+    i       : INT;
+    idx     : INT;
+    result  : STRING(8192);
+    tmp     : STRING(255);
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[result := '';
+idx := pQueue^.Head;
+
+FOR i := 1 TO pQueue^.Count DO
+    tmp := pQueue^.Buffer[idx];
+
+    // 내용 추가
+//    result := CONCAT(result, tmp);
+	CONCAT2(
+        pSrcString1 := ADR(result),
+        pSrcString2 := ADR(tmp),
+        pDstString  := ADR(result),
+        nDstSize    := SIZEOF(result)
+    );
+
+    // 마지막 요소가 아니면 엔터 추가
+    IF i < pQueue^.Count THEN
+//        result := CONCAT(result, '\r\n');
+        CONCAT2(
+            pSrcString1 := ADR(result),
+            pSrcString2 := ADR('$R$N'),
+            pDstString  := ADR(result),
+            nDstSize    := SIZEOF(result)
+        );
+    END_IF
+
+    // 원형 인덱스 이동
+    idx := (idx + 1) MOD 20;
+END_FOR
+
+f_Queue_ToString := result;]]></ST>
+    </Implementation>
+    <LineIds Name="f_Queue_ToString">
+      <LineId Id="16" Count="7" />
+      <LineId Id="45" Count="4" />
+      <LineId Id="44" Count="0" />
+      <LineId Id="24" Count="3" />
+      <LineId Id="51" Count="4" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="28" Count="5" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

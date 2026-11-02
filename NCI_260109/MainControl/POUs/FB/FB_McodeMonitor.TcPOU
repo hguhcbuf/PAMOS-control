@@ -1,0 +1,433 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_McodeMonitor" Id="{7428d1d0-8254-4887-90ac-0d2cb3dda97d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_McodeMonitor
+VAR_INPUT
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR_IN_OUT
+	inst_NcToPlc_NCI	:	NCTOPLC_NCICHANNEL_REF;
+	inst_PlcToNc_NCI	:	PLCTONC_NCICHANNEL_REF;
+END_VAR
+VAR
+	bNordsonExtOn		:	BOOL	:=	FALSE;
+	bNordsonExtOff		:	BOOL	:=	FALSE;
+	bMicrofabExtOn		:	BOOL	:=	FALSE;
+	bMicrofabExtOff		:	BOOL	:=	FALSE;
+	
+	bLJ_S8000TRG		:	BOOL	:=	FALSE;
+	nLJ_S8000State		:	UDINT	:=	0;
+	
+	bNordsonPresWriteTRG:	BOOL	:=	FALSE;	
+	nNordsonPresWriteState	:	UDINT	:=	0;
+	nNordsonPresRNum	:	INT	:=	0;	
+	nNordsonPressRParam	:	LREAL	:=	0.0;
+	
+	nHskMNum			:	INT	:=	0;
+	
+	
+	bRHskTRG			:	BOOL	:=	FALSE;
+	nRHskState			:	UDINT	:=	0;
+	nRHskBusyIdx			:	DINT	:=	0;
+	nRHskVal			:	LREAL	:=	0;
+	
+	fb_ConfirmHsk		:	ItpConfirmHsk;
+	fb_ReadRParams		:	ItpReadRParams;
+	
+	fb_LJ_S8000Cap		:	FB_LJ_S8000Capture;
+	fb_WritePressure	:	FB_WritePressure;
+	
+	fb_MicroFabInterval	:	FB_PulseInterval;
+	
+	nMicroFabIntRNum	:	INT	:=	0;
+	nMicroFabInterval	:	LREAL	:=	0.0;
+	bMicroFabIntWriteTRG:	BOOL	:=	FALSE;
+	nMicroFabIntWriteState	:	UDINT	:=	0;
+	
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[bNordsonExtOn	:=	ItpIsFastMFunc(	
+	nFastMFuncNo	:=	MFuncs.M_NordsonExtOn,
+	sNciToPlc		:=	inst_NcToPlc_NCI);
+
+bNordsonExtOff	:=	ItpIsFastMFunc(
+	nFastMFuncNo	:=	MFuncs.M_NordsonExtOff,
+	sNciToPlc		:=	inst_NcToPlc_NCI);
+
+bMicrofabExtOn	:=	ItpIsFastMFunc(
+	nFastMFuncNo	:=	MFuncs.M_MicrofabExtOn,
+	sNciToPlc		:=	inst_NcToPlc_NCI);
+
+bMicrofabExtOff	:=	ItpIsFastMFunc(
+	nFastMFuncNo	:=	MFuncs.M_MicrofabExtOff,
+	sNciToPlc		:=	inst_NcToPlc_NCI);
+
+	
+
+IF ItpIsHskMFunc(inst_NcToPlc_NCI) THEN
+	nHskMNum	:=	ItpGetHskMFunc(inst_NcToPlc_NCI);
+	IF f_Contains_INT(
+		num	:=	nHskMNum,
+		arr	:=	UserVar.R_Params) THEN
+		IF (nHskMNum >= 100) AND (nHskMNum < 110) THEN
+			nNordsonPresRNum		:=	nHskMNum;
+			bNordsonPresWriteTRG	:=	TRUE;
+		ELSIF (nHskMNum >= 110) AND (nHskMNum <= 112) THEN
+			nMicroFabIntRNum		:=	nHskMNum;
+			bMicroFabIntWriteTRG	:=	TRUE;
+		END_IF
+	ELSE
+		CASE nHskMNum OF
+			MFuncs.M_LJ_S8000TRG:
+				bLJ_S8000TRG	:=	TRUE;
+			MFuncs.M_RHskTRG:
+				bRHskTRG	:=	TRUE;
+		END_CASE
+	END_IF
+	
+END_IF
+
+
+
+
+
+
+IF bNordsonExtOn THEN
+	ExtPort.EL2634_OUT[0] := TRUE;
+ELSIF bNordsonExtOff THEN
+	ExtPort.EL2634_OUT[0] := FALSE;
+END_IF
+
+
+IF bMicrofabExtOn THEN
+	IF (nMicroFabInterval - 20) > -0.01 THEN
+		fb_MicroFabInterval(
+			bOn	:=	TRUE,
+			nInterval	:=	TO_UDINT(nMicroFabInterval));
+	ELSE
+		fb_MicroFabInterval(
+			bOn	:=	TRUE);
+	END_IF
+ELSIF bMicrofabExtOff THEN
+	fb_MicroFabInterval(
+		bOn	:=	FALSE);
+END_IF
+fb_MicroFabInterval();
+
+
+
+
+
+IF bLJ_S8000TRG THEN
+	CASE nLJ_S8000State	OF
+		0:
+			fb_LJ_S8000Cap(	bExecute	:=	TRUE);
+			IF fb_LJ_S8000Cap.bBusy	THEN
+				fb_LJ_S8000Cap.bExecute	:=	FALSE;
+				nLJ_S8000State	:=	1;
+			END_IF
+		1:
+			fb_LJ_S8000Cap(	bExecute	:=	FALSE);
+			IF NOT fb_LJ_S8000Cap.bBusy THEN
+				fb_ConfirmHsk(
+					bExecute	:=	TRUE,
+					sNciToPlc	:=	inst_NcToPlc_NCI,
+					sPlcToNci	:=	inst_PlcToNc_NCI,);
+				nLJ_S8000State	:=	2;
+			END_IF
+		2:
+			IF 	fb_ConfirmHsk.bBusy THEN
+				fb_ConfirmHsk(
+					bExecute	:=	FALSE,
+					sNciToPlc	:=	inst_NcToPlc_NCI,
+					sPlcToNci	:=	inst_PlcToNc_NCI,);
+				bLJ_S8000TRG	:=	FALSE;
+				nLJ_S8000State	:=	0;
+			END_IF
+	END_CASE
+END_IF
+
+
+
+IF bNordsonPresWriteTRG THEN
+	CASE nNordsonPresWriteState	OF
+		0:
+			fb_ReadRParams(
+				bExecute	:=	TRUE,
+				nChnId		:=	inst_NcToPlc_NCI.ChnId,
+				pAddr		:=	ADR(nNordsonPressRParam),
+				nIndex		:=	nNordsonPresRNum,
+				nCount		:=	1);
+			nNordsonPresWriteState	:=	1;
+		1:
+			IF fb_ReadRParams.bBusy THEN
+				fb_ReadRParams(
+					bExecute	:=	FALSE,
+					nChnId		:=	inst_NcToPlc_NCI.ChnId,
+					pAddr		:=	ADR(nNordsonPressRParam),
+					nIndex		:=	nNordsonPresRNum,
+					nCount		:=	1);
+				fb_WritePressure(
+					bExecute	:=	TRUE,
+					Pressure	:=	LREAL_TO_REAL(nNordsonPressRParam));
+				IF fb_WritePressure.bBusy	THEN
+					nNordsonPresRNum	:=	0;
+					fb_WritePressure.bExecute	:=	FALSE;
+					nNordsonPresWriteState	:=	2;
+				END_IF
+			END_IF
+		2:
+			fb_WritePressure(	bExecute	:=	FALSE);
+			IF NOT fb_WritePressure.bBusy THEN
+				IF NOT fb_WritePressure.bErr THEN
+					fb_ConfirmHsk(
+						bExecute	:=	TRUE,
+						sNciToPlc	:=	inst_NcToPlc_NCI,
+						sPlcToNci	:=	inst_PlcToNc_NCI,);
+					nNordsonPresWriteState	:=	3;
+				ELSE
+					nNordsonPresWriteState	:=	1;
+				END_IF
+			END_IF
+		3:
+			IF 	fb_ConfirmHsk.bBusy THEN
+				fb_ConfirmHsk(
+					bExecute	:=	FALSE,
+					sNciToPlc	:=	inst_NcToPlc_NCI,
+					sPlcToNci	:=	inst_PlcToNc_NCI,);
+				bNordsonPresWriteTRG	:=	FALSE;
+				nNordsonPresWriteState	:=	0;
+			END_IF
+	END_CASE
+END_IF
+
+
+
+IF bMicroFabIntWriteTRG THEN
+	CASE nMicroFabIntWriteState	OF
+		0:
+			fb_ReadRParams(
+				bExecute	:=	TRUE,
+				nChnId		:=	inst_NcToPlc_NCI.ChnId,
+				pAddr		:=	ADR(nMicroFabInterval),
+				nIndex		:=	nMicroFabIntRNum,
+				nCount		:=	1);
+			nMicroFabIntWriteState	:=	1;
+		1:
+			IF fb_ReadRParams.bBusy THEN
+				fb_ReadRParams(
+					bExecute	:=	FALSE,
+					nChnId		:=	inst_NcToPlc_NCI.ChnId,
+					pAddr		:=	ADR(nMicroFabInterval),
+					nIndex		:=	nMicroFabIntRNum,
+					nCount		:=	1);
+				fb_ConfirmHsk(
+					bExecute	:=	TRUE,
+					sNciToPlc	:=	inst_NcToPlc_NCI,
+					sPlcToNci	:=	inst_PlcToNc_NCI,);
+				nMicroFabIntWriteState	:=	2;
+			END_IF
+		2:
+			IF 	fb_ConfirmHsk.bBusy THEN
+				fb_ConfirmHsk(
+					bExecute	:=	FALSE,
+					sNciToPlc	:=	inst_NcToPlc_NCI,
+					sPlcToNci	:=	inst_PlcToNc_NCI,);
+				bMicroFabIntWriteTRG	:=	FALSE;
+				nMicroFabIntWriteState	:=	0;
+			END_IF
+	END_CASE
+END_IF
+
+
+
+
+IF bRHskTRG THEN
+	CASE nRHskState	OF
+		0:
+			nRHskBusyIdx	:=	0;
+			nRHskState	:=	1;
+		1:
+			fb_ReadRParams(
+				bExecute	:=	TRUE,
+				nChnId		:=	inst_NcToPlc_NCI.ChnId,
+				pAddr		:=	ADR(nRHskVal),
+				nIndex		:=	TO_DINT(UserVar.R_Params[nRHskBusyIdx]),
+				nCount		:=	1);
+			nRHskState	:=	2;
+		2:
+			IF fb_ReadRParams.bBusy THEN
+				fb_ReadRParams(
+					bExecute	:=	FALSE,
+					nChnId		:=	inst_NcToPlc_NCI.ChnId,
+					pAddr		:=	ADR(nRHskVal),
+					nIndex		:=	TO_DINT(UserVar.R_Params[nRHskBusyIdx]),
+					nCount		:=	1);
+				IF nRHskVal	<>	UserVar.R_InitVal THEN
+					fb_ConfirmHsk(
+						bExecute	:=	TRUE,
+						sNciToPlc	:=	inst_NcToPlc_NCI,
+						sPlcToNci	:=	inst_PlcToNc_NCI,);
+					nRHskState	:=	3;
+				ELSE
+					nRHskBusyIdx	:=	nRHskBusyIdx	+	1;
+					IF nRHskBusyIdx >=	(SIZEOF(UserVar.R_Params) / 2) THEN
+						nRHskState	:=	0;
+					ELSE
+						nRHskState	:=	1;
+					END_IF
+				END_IF
+			END_IF
+		3:
+			IF 	fb_ConfirmHsk.bBusy THEN
+				fb_ConfirmHsk(
+					bExecute	:=	FALSE,
+					sNciToPlc	:=	inst_NcToPlc_NCI,
+					sPlcToNci	:=	inst_PlcToNc_NCI,);
+				bRHskTRG	:=	FALSE;
+				nRHskState	:=	0;
+			END_IF
+	END_CASE
+END_IF
+
+
+
+
+
+
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_McodeMonitor">
+      <LineId Id="13" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="25" Count="1" />
+      <LineId Id="28" Count="3" />
+      <LineId Id="33" Count="2" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="439" Count="0" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="440" Count="0" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="448" Count="0" />
+      <LineId Id="323" Count="0" />
+      <LineId Id="328" Count="0" />
+      <LineId Id="327" Count="0" />
+      <LineId Id="441" Count="0" />
+      <LineId Id="277" Count="0" />
+      <LineId Id="275" Count="0" />
+      <LineId Id="449" Count="1" />
+      <LineId Id="501" Count="1" />
+      <LineId Id="266" Count="0" />
+      <LineId Id="269" Count="2" />
+      <LineId Id="285" Count="0" />
+      <LineId Id="289" Count="0" />
+      <LineId Id="267" Count="0" />
+      <LineId Id="265" Count="0" />
+      <LineId Id="59" Count="0" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="61" Count="0" />
+      <LineId Id="433" Count="2" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="52" Count="0" />
+      <LineId Id="38" Count="3" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="438" Count="0" />
+      <LineId Id="43" Count="1" />
+      <LineId Id="525" Count="0" />
+      <LineId Id="521" Count="0" />
+      <LineId Id="523" Count="1" />
+      <LineId Id="526" Count="0" />
+      <LineId Id="529" Count="1" />
+      <LineId Id="528" Count="0" />
+      <LineId Id="46" Count="1" />
+      <LineId Id="531" Count="0" />
+      <LineId Id="42" Count="0" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="532" Count="2" />
+      <LineId Id="63" Count="0" />
+      <LineId Id="69" Count="1" />
+      <LineId Id="162" Count="0" />
+      <LineId Id="165" Count="0" />
+      <LineId Id="163" Count="0" />
+      <LineId Id="166" Count="0" />
+      <LineId Id="169" Count="0" />
+      <LineId Id="167" Count="1" />
+      <LineId Id="170" Count="1" />
+      <LineId Id="173" Count="0" />
+      <LineId Id="177" Count="0" />
+      <LineId Id="174" Count="2" />
+      <LineId Id="172" Count="0" />
+      <LineId Id="178" Count="0" />
+      <LineId Id="180" Count="7" />
+      <LineId Id="179" Count="0" />
+      <LineId Id="164" Count="0" />
+      <LineId Id="156" Count="0" />
+      <LineId Id="226" Count="1" />
+      <LineId Id="196" Count="0" />
+      <LineId Id="199" Count="2" />
+      <LineId Id="233" Count="0" />
+      <LineId Id="235" Count="0" />
+      <LineId Id="237" Count="2" />
+      <LineId Id="242" Count="0" />
+      <LineId Id="246" Count="2" />
+      <LineId Id="279" Count="4" />
+      <LineId Id="278" Count="0" />
+      <LineId Id="251" Count="3" />
+      <LineId Id="284" Count="0" />
+      <LineId Id="255" Count="1" />
+      <LineId Id="249" Count="1" />
+      <LineId Id="207" Count="2" />
+      <LineId Id="257" Count="0" />
+      <LineId Id="210" Count="4" />
+      <LineId Id="259" Count="1" />
+      <LineId Id="258" Count="0" />
+      <LineId Id="215" Count="10" />
+      <LineId Id="197" Count="0" />
+      <LineId Id="459" Count="18" />
+      <LineId Id="503" Count="0" />
+      <LineId Id="479" Count="0" />
+      <LineId Id="504" Count="2" />
+      <LineId Id="482" Count="0" />
+      <LineId Id="487" Count="2" />
+      <LineId Id="507" Count="6" />
+      <LineId Id="454" Count="0" />
+      <LineId Id="514" Count="0" />
+      <LineId Id="453" Count="0" />
+      <LineId Id="330" Count="1" />
+      <LineId Id="329" Count="0" />
+      <LineId Id="198" Count="0" />
+      <LineId Id="290" Count="0" />
+      <LineId Id="332" Count="0" />
+      <LineId Id="335" Count="0" />
+      <LineId Id="338" Count="0" />
+      <LineId Id="366" Count="1" />
+      <LineId Id="344" Count="5" />
+      <LineId Id="343" Count="0" />
+      <LineId Id="341" Count="0" />
+      <LineId Id="351" Count="6" />
+      <LineId Id="360" Count="0" />
+      <LineId Id="385" Count="3" />
+      <LineId Id="364" Count="0" />
+      <LineId Id="361" Count="0" />
+      <LineId Id="375" Count="2" />
+      <LineId Id="382" Count="1" />
+      <LineId Id="380" Count="0" />
+      <LineId Id="362" Count="0" />
+      <LineId Id="358" Count="0" />
+      <LineId Id="389" Count="7" />
+      <LineId Id="342" Count="0" />
+      <LineId Id="336" Count="0" />
+      <LineId Id="333" Count="0" />
+      <LineId Id="516" Count="4" />
+      <LineId Id="515" Count="0" />
+      <LineId Id="291" Count="0" />
+      <LineId Id="159" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

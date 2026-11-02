@@ -1,0 +1,86 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="UserVar" Id="{b1dcd398-8998-4892-95de-991883e49841}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	
+	RunningGCodeName:	STRING(255)	:=	'';
+//	QueuedGCodeName	:	STRING(255)	:=	'';
+	GCodeNameQueue	:	T_StringQueue;
+	
+	ContinueGCode	:	BOOL	:=	TRUE;
+	
+	SingleGCodeMode	:	BOOL	:=	FALSE;
+	SingleGCodeTRG	:	BOOL	:=	FALSE;
+	
+	// 0: OFF, 1: JOG, 2: GCODE
+	OpMode	:	UDINT	:=	0;
+	
+	// 0: Nothing, +1: +, +2: ++, -1: -, -2: --
+	// +-3: ManualVel 
+	JogButtonX	:	INT	:=	0;
+	JogButtonY	:	INT	:=	0;
+	JogButtonZ	:	INT	:=	0;
+//	JogVel		:	LREAL	:=	30.0;
+	
+	JogMovePos	:	BOOL	:=	FALSE;
+	JogTargX	:	STRING	:=	'100.0';
+	JogTargY	:	STRING	:=	'260.0';
+	JogTargZ	:	STRING	:=	'60.0';
+	JogTargVel	:	STRING	:=	'1800'; // Feedrate (mm/min)
+	
+	JogPowerX	:	BOOL	:=	TRUE;
+	JogPowerY	:	BOOL	:=	TRUE;
+	JogPowerZ	:	BOOL	:=	TRUE;
+	
+	NordsonReadPressureBtn	:	BOOL	:=	FALSE;
+	NordsonWritePressureBtn	:	BOOL	:=	FALSE;
+	NordsonPressureActive	:	BOOL	:=	TRUE;
+	
+	LJ_S8000CaptureBtn		:	BOOL	:=	FALSE;
+	LJ_S8000CaptureActive	:	BOOL	:=	TRUE;
+	
+	GCodeBasePath	:	STRING(255)	:=	'C:\\Users\\Administrator\\Desktop\\GCodes';
+
+	// 0: Don't input HMIVar.CodeName into execution
+	// 1: HMIVar.CodeName into QueuedGCodeName
+	// 2: HMIVar.CodeName into GCodeName LIST
+	Auto_CodeType	:	INT	:=	1;
+	
+	R_Params		:	ARRAY[0..12] OF INT	:=
+						[100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
+						 110, 111, 112];
+	
+	R_InitVal		:	LREAL	:=	-1.0;
+	
+	bBackendStarted	:	BOOL	:=	FALSE;
+	
+	//	gDtFromPy : DT;      // Python이 써주는 시간(권장: UTC epoch seconds로 써서 DT에 저장)
+//    gPlcNowDt : DT;      // PLC 로컬 현재시간을 DT로 변환해 저장(옵션)
+    gDiffSec  : LINT;    // (PLC - Python) 차이[초]
+    gInSync   : BOOL	:=	TRUE;    // 동기 여부
+	gPlcStr: STRING(24);
+    gPyStr    : STRING(24);
+	
+	bClearQueue	:	BOOL	:=	FALSE;
+	
+	
+	bESTOP		:	BOOL	:=	FALSE;
+	bRESET		:	BOOL	:=	FALSE;
+	
+	
+	bSingleBlockMode	:	BOOL	:=	FALSE;
+	
+	bNordsonFoot	:	BOOL	:=	FALSE;
+	
+	CurrBlockNum		:	UDINT	:=	0;
+	// Optional Axis 4. Non-retained; all motion permissions default OFF.
+	Q1Commissioned : BOOL := FALSE; // Operator confirmation; NOT a safety function
+	Q1Enable : BOOL := FALSE;
+	Q1UseInGCode : BOOL := FALSE; // Sampled in state 200, held for whole queue run
+	Q1Reset : BOOL := FALSE; // Rising edge, idle only
+	Q1JogButton : INT := 0; // -1 / 0 / +1 only
+	Q1JogVelocity : LREAL := 0.0; // NC units/second; validate before setting
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>

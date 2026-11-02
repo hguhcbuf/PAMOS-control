@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="f_MakeAbsPath" Id="{9bde3730-b15a-4787-9981-9d255e5c877e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION f_MakeAbsPath : STRING(255)
+VAR_INPUT
+	GCodePath	:	STRING(255);
+END_VAR
+VAR
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[f_MakeAbsPath	:=	CONCAT(UserVar.GCodeBasePath, GCodePath);]]></ST>
+    </Implementation>
+    <LineIds Name="f_MakeAbsPath">
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

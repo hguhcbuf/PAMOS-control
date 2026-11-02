@@ -1,0 +1,59 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_LJ_S8000Capture" Id="{969c9b00-c5ae-47a5-91f0-c2316712753f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_LJ_S8000Capture
+VAR_INPUT
+	bExecute	:	BOOL	:=	FALSE;
+END_VAR
+VAR_OUTPUT
+	bBusy		:	BOOL	:=	FALSE;
+END_VAR
+VAR
+	nState		:	UDINT	:=	0;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE nState	OF
+
+0:	
+	IF bExecute	THEN
+		IF NOT ExtPort.LJ_S8000_bTRG_ack THEN
+			ExtPort.LJ_S8000_bTRG	:=	TRUE;
+			bBusy	:=	TRUE;
+			nState	:=	1;
+		END_IF
+	END_IF
+
+1:
+	IF ExtPort.LJ_S8000_bTRG_ack THEN
+		ExtPort.LJ_S8000_bTRG	:=	FALSE;
+	END_IF
+	IF ExtPort.LJ_S8000_bBusy THEN
+		nState	:=	2;
+	END_IF
+	
+2:
+	IF ExtPort.LJ_S8000_bReady THEN
+		bBusy	:=	FALSE;
+		nState	:=	0;
+	END_IF
+	
+END_CASE]]></ST>
+    </Implementation>
+    <LineIds Name="FB_LJ_S8000Capture">
+      <LineId Id="13" Count="0" />
+      <LineId Id="52" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="15" Count="1" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="19" Count="10" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="34" Count="1" />
+      <LineId Id="46" Count="0" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

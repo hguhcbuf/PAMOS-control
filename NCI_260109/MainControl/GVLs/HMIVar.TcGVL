@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <GVL Name="HMIVar" Id="{6cadcab6-f88b-435c-ace5-f66a1d44253e}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	
+	sActPosX	:	STRING(32)	:=	'0.000';
+	sActPosY	:	STRING(32)	:=	'0.000';
+	sActPosZ	:	STRING(32)	:=	'0.000';
+	
+	sActVelX	:	STRING(32)	:=	'0.000';
+	sActVelY	:	STRING(32)	:=	'0.000';
+	sActVelZ	:	STRING(32)	:=	'0.000';
+	
+	sActAccX	:	STRING(32)	:=	'0.000';
+	sActAccY	:	STRING(32)	:=	'0.000';
+	sActAccZ	:	STRING(32)	:=	'0.000';
+	
+	sSetPosX	:	STRING(32)	:=	'0.000';
+	sSetPosY	:	STRING(32)	:=	'0.000';
+	sSetPosZ	:	STRING(32)	:=	'0.000';
+	
+	sSetVelX	:	STRING(32)	:=	'0.000';
+	sSetVelY	:	STRING(32)	:=	'0.000';
+	sSetVelZ	:	STRING(32)	:=	'0.000';
+	
+	sSetAccX	:	STRING(32)	:=	'0.000';
+	sSetAccY	:	STRING(32)	:=	'0.000';
+	sSetAccZ	:	STRING(32)	:=	'0.000';
+	
+	
+	EstimatedTime		:	STRING(32)	:=	'0.000s';
+	
+	
+	bNaviActive	:	BOOL	:=	TRUE;
+	
+	CodeName	:	STRING(255);
+	
+	GCodeQueueString:	STRING(8192):=	'';
+	
+	NordsonPressure			:	STRING	:=	'0';
+	
+	
+	I_ForceActX		AT%I*	:	DINT;
+	I_ForceActY		AT%I*	:	DINT;
+	I_ForceActZ		AT%I*	:	DINT;
+	
+	
+	RunningGCodeLine	:	STRING(1024)	:=	'';
+	
+	CurrBlockNumSTR		:	STRING	:=	'-';
+	
+	
+	
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>
